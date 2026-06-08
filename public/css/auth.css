@@ -1,0 +1,132 @@
+/* html, body {
+    margin: 0;
+    padding: 0;
+} */
+
+.auth-body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: #f1f5f9;
+    padding: 20px;
+}
+
+.auth-wrapper {
+    margin: 0 !important;
+    display: flex;
+    max-width: 950px;
+    width: 100%;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+    overflow: hidden;
+}
+
+.auth-image {
+    width: 45%;
+    background: #f5f7ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.auth-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.auth-form {
+    width: 55%;
+    padding: 30px 40px;
+}
+
+/* Compact fields for registration */
+.auth-form .field {
+    margin-bottom: 12px;
+}
+
+.auth-form .field label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #444;
+}
+
+.auth-form .field input {
+    padding: 10px 12px;
+    font-size: 14px;
+}
+
+.auth-form .title {
+    font-size: 24px;
+    margin-bottom: 2px;
+}
+
+.auth-form .subtitle {
+    font-size: 13px;
+    margin-bottom: 15px;
+}
+
+/* Role switch buttons */
+.role-switch {
+    background: #f0f4f8;
+    padding: 4px;
+    border-radius: 50px;
+    display: inline-flex;
+    margin-bottom: 15px;
+}
+
+.role-btn {
+    border: none;
+    padding: 8px 24px;
+    border-radius: 40px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    background: transparent;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.role-btn.active {
+    background: #23AAE2;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(35, 170, 226, 0.3);
+}
+
+/* CAPTCHA compact */
+.captcha-wrapper {
+    padding: 10px !important;
+    margin-bottom: 10px;
+    transform: scale(0.9);
+    transform-origin: left;
+}
+
+@media (max-width: 992px) {
+    .auth-wrapper {
+        max-width: 500px;
+        flex-direction: column;
+    }
+    .auth-image {
+        display: none;
+    }
+    .auth-form {
+        width: 100%;
+        padding: 30px 20px;
+    }
+}
+
+@media (max-height: 800px) {
+    .auth-body {
+        padding: 10px;
+    }
+    .auth-form {
+        padding: 20px 30px;
+    }
+    .auth-form .field {
+        margin-bottom: 8px;
+    }
+}
