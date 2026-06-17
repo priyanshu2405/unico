@@ -8,6 +8,8 @@ use App\Models\AuditLog;
 use App\Models\User;
 use App\Models\VoucherPriceRule;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
 
 class SystemController extends Controller
 {
@@ -23,8 +25,8 @@ class SystemController extends Controller
             ->distinct()
             ->get();
 
-        // Get vouchers from VoucherPriceRule
-        $vouchers = VoucherPriceRule::select('id', 'brand_name', 'voucher_variant', 'country_name')->get();
+        // Get vouchers from InventoryVoucher (Stocks Upload)
+        $vouchers = \App\Models\InventoryVoucher::select('id', 'brand_name', 'voucher_variant', 'country_region as country_name')->get();
 
         return view('dashboard.system.control', compact('settings', 'logs', 'countries', 'vouchers'));
     }
@@ -99,5 +101,86 @@ class SystemController extends Controller
         ]);
 
         return back()->with('success', 'System emergency status updated to ' . $newStatus);
+    }
+
+    public function clearCache(Request $request)
+    {
+        try {
+            Artisan::call('cache:clear');
+            Artisan::call('config:clear');
+            Artisan::call('view:clear');
+            Artisan::call('route:clear');
+
+            AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => 'System Update',
+                'description' => 'System caches cleared by admin',
+                'ip_address' => $request->ip()
+            ]);
+
+            return back()->with('success', 'System caches cleared successfully.');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Failed to clear cache: ' . $e->getMessage());
+        }
+    }
+
+    public function backupDatabase(Request $request)
+    {
+        try {
+            $tables = DB::select('SHOW TABLES');
+            $dbName = DB::getDatabaseName();
+            $tableKey = "Tables_in_" . $dbName;
+            
+            $sqlDump = "-- Laravel Database Backup\n";
+            $sqlDump .= "-- Database: " . $dbName . "\n";
+            $sqlDump .= "-- Generated: " . now()->toDateTimeString() . "\n\n";
+            
+            foreach ($tables as $table) {
+                $tableName = $table->$tableKey;
+                
+                // Get Create Table statement
+                $createTable = DB::select("SHOW CREATE TABLE `{$tableName}`");
+                if (!empty($createTable)) {
+                    $sqlDump .= "DROP TABLE IF EXISTS `{$tableName}`;\n";
+                    $sqlDump .= $createTable[0]->{'Create Table'} . ";\n\n";
+                }
+                
+                // Get rows
+                $rows = DB::table($tableName)->get();
+                foreach ($rows as $row) {
+                    $rowArray = (array)$row;
+                    $keys = array_keys($rowArray);
+                    $escapedKeys = array_map(function($key) {
+                        return "`" . addslashes($key) . "`";
+                    }, $keys);
+                    
+                    $values = array_values($rowArray);
+                    $escapedValues = array_map(function($value) {
+                        if ($value === null) {
+                            return "NULL";
+                        }
+                        return "'" . addslashes($value) . "'";
+                    }, $values);
+                    
+                    $sqlDump .= "INSERT INTO `{$tableName}` (" . implode(', ', $escapedKeys) . ") VALUES (" . implode(', ', $escapedValues) . ");\n";
+                }
+                $sqlDump .= "\n";
+            }
+            
+            AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => 'System Update',
+                'description' => 'Database backup downloaded by admin',
+                'ip_address' => $request->ip()
+            ]);
+
+            $fileName = $dbName . "_" . date('Y-m-d_H-i-s') . ".sql";
+            
+            return response($sqlDump)
+                ->header('Content-Type', 'application/sql')
+                ->header('Content-Disposition', 'attachment; filename="' . $fileName . '"');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Failed to backup database: ' . $e->getMessage());
+        }
     }
 }

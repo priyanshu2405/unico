@@ -65,4 +65,9 @@ return [
         'base_url' => env('WISE_BASE_URL', 'https://api.sandbox.transferwise.tech'),
     ],
 
+    'recaptcha' => [
+        'site_key' => env('RECAPTCHA_SITE'),
+        'secret_key' => env('RECAPTCHA_SECRET'),
+    ],
+
 ];

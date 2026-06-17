@@ -252,7 +252,7 @@ $accountLocked = $lockRequested && $defaultType === $requestedType;
                 </div>
 
                 <div class="captcha-wrapper">
-                    <div class="g-recaptcha" data-sitekey="{{ env('RECAPTCHA_SITE') }}"></div>
+                    <div class="g-recaptcha" data-sitekey="{{ config('services.recaptcha.site_key') }}"></div>
                 </div>
 
                 <button type="button" class="btn-register w-100 mt-3" id="submitBtns">
@@ -313,6 +313,15 @@ $accountLocked = $lockRequested && $defaultType === $requestedType;
         }
 
         document.getElementById('submitBtns').addEventListener('click', function() {
+            if (typeof grecaptcha === 'undefined') {
+                Swal.fire({
+                    title: "reCAPTCHA Error",
+                    text: "Google reCAPTCHA failed to load. Please reload the page or check your internet connection.",
+                    icon: "error"
+                });
+                return;
+            }
+
             if (grecaptcha.getResponse() === "") {
                 Swal.fire({
                     title: "Verification Required",
@@ -326,7 +335,10 @@ $accountLocked = $lockRequested && $defaultType === $requestedType;
             const phoneInput = document.querySelector("#phone_input");
             if (phoneInput && phoneInput.iti) {
                 document.getElementById('full_phone').value = phoneInput.iti.getNumber();
-                document.getElementById('country_code').value = phoneInput.iti.getSelectedCountryData().iso2.toUpperCase();
+                const countryData = phoneInput.iti.getSelectedCountryData();
+                if (countryData && countryData.iso2) {
+                    document.getElementById('country_code').value = countryData.iso2.toUpperCase();
+                }
             }
 
             document.getElementById('regifeetaken').value = 'no';

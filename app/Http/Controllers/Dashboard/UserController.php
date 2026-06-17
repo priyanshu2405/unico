@@ -54,6 +54,14 @@ class UserController extends Controller
             $query->where('profile_verification_status', $request->verification_status);
         }
 
+        if ($request->has('flags') && $request->flags != 'all' && $request->flags != '') {
+            if ($request->flags === 'email_verified') {
+                $query->whereNotNull('email_verified_at');
+            } elseif ($request->flags === 'doc_verified') {
+                $query->where('profile_verification_status', 'verified');
+            }
+        }
+
         if ($request->has('country') && $request->country != 'all' && $request->country != '') {
             $query->where('country', $request->country);
         }
@@ -732,7 +740,7 @@ class UserController extends Controller
                 $query->where('highest_education', 'like', "%{$request->highest_education}%");
             }
             if ($request->has('preferred_country') && $request->preferred_country != 'all' && $request->preferred_country != '') {
-                $query->where('preferred_country', $request->preferred_country);
+                $query->whereJsonContains('preferred_countries', $request->preferred_country);
             }
         }
 
@@ -1048,7 +1056,7 @@ class UserController extends Controller
         }
 
         if ($request->has('preferred_country') && $request->preferred_country != 'all' && $request->preferred_country != '') {
-            $query->where('preferred_country', $request->preferred_country);
+            $query->whereJsonContains('preferred_countries', $request->preferred_country);
         }
 
         if ($request->has('search') && $request->search != '') {

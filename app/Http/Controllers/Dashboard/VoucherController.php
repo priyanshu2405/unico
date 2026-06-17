@@ -51,6 +51,35 @@ class VoucherController extends Controller
 
         // Country and State filtering: match user's country and state with voucher's settings
         if (!in_array($user->account_type, ['admin', 'manager'])) {
+            // 1. Check Global Stop Sales
+            $stopAllSales = \App\Models\SystemSetting::where('settings_key', 'stop_all_sales')->value('settings_value') === 'on';
+            if ($stopAllSales) {
+                $query->whereRaw('1 = 0'); // Hide everything
+            }
+
+            // 2. Check Brand-wise Stop
+            $stoppedBrandsJson = \App\Models\SystemSetting::where('settings_key', 'stopped_brands')->value('settings_value');
+            $stoppedBrands = json_decode($stoppedBrandsJson ?? '[]', true) ?: [];
+            if (!empty($stoppedBrands)) {
+                $query->whereNotIn('brand_name', $stoppedBrands);
+            }
+
+            // 3. Check Country-wise Stop
+            $stoppedCountriesJson = \App\Models\SystemSetting::where('settings_key', 'stopped_countries')->value('settings_value');
+            $stoppedCountries = json_decode($stoppedCountriesJson ?? '[]', true) ?: [];
+            if (!empty($stoppedCountries)) {
+                if (in_array($user->country, $stoppedCountries)) {
+                    $query->whereRaw('1 = 0');
+                } else {
+                    $query->where(function ($q) use ($stoppedCountries) {
+                        foreach ($stoppedCountries as $country) {
+                            $q->whereJsonDoesntContain('country_region', $country)
+                              ->where('country_region', 'not like', '%' . $country . '%');
+                        }
+                    });
+                }
+            }
+
             $query->where(function ($q) use ($user) {
                 $q->whereJsonContains('country_region', $user->country)
                     ->orWhereJsonContains('country_region', 'all')
@@ -221,6 +250,12 @@ class VoucherController extends Controller
         ]);
 
         $user = auth()->user();
+
+        // Check Emergency Freeze
+        $emergencyFreeze = \App\Models\SystemSetting::where('settings_key', 'emergency_freeze')->value('settings_value') === 'on';
+        if ($emergencyFreeze) {
+            return response()->json(['message' => 'System transactions are currently frozen by admin.'], 400);
+        }
 
         // Calculate correct price based on user role
         if ($user->isStudent()) {

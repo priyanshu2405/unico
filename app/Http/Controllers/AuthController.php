@@ -70,7 +70,7 @@ class AuthController extends Controller
         $captchaResponse = $http->post(
             'https://www.google.com/recaptcha/api/siteverify',
             [
-                'secret'   => env('RECAPTCHA_SECRET'),
+                'secret'   => config('services.recaptcha.secret_key'),
                 'response' => $request->input('g-recaptcha-response'),
                 'remoteip' => $request->ip(),
             ]

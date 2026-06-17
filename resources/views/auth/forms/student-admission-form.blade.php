@@ -47,7 +47,7 @@
   </div>
   @endif
 
-  <form id="satForm" method="POST" action="{{ route('auth.form.student.post') }}" enctype="multipart/form-data">
+  <form id="satForm" method="POST" action="{{ route('auth.form.student.post') }}" enctype="multipart/form-data" novalidate>
     @csrf
     <!-- ================= PERSONAL ================= -->
     <section class="sat-section form-step active" data-step="1">
@@ -387,8 +387,11 @@
       },
     });
 
+    window.primaryContactInput = primaryContactInput;
+    window.whatsappNumberInput = whatsappNumberInput;
+
     // Real-time validation
-    function validateField(input) {
+    window.validateField = function(input) {
       const $input = $(input);
       const name = $input.attr('name');
       let isValid = true;
@@ -461,26 +464,31 @@
 
       if (!isValid) {
         $input.addClass('is-invalid');
-        if ($input.closest('.sat-field').find('.invalid-feedback').length === 0) {
-          $input.after(`<div class="invalid-feedback">${errorMessage}</div>`);
+        let $parent = $input.closest('.sat-field');
+        if ($parent.length === 0) $parent = $input.closest('.sat-consent');
+        
+        if ($parent.find('.invalid-feedback').length === 0) {
+          $input.after(`<div class="invalid-feedback d-block">${errorMessage}</div>`);
         } else {
-          $input.closest('.sat-field').find('.invalid-feedback').text(errorMessage);
+          $parent.find('.invalid-feedback').text(errorMessage);
         }
       } else {
         $input.removeClass('is-invalid');
-        $input.closest('.sat-field').find('.invalid-feedback').remove();
+        let $parent = $input.closest('.sat-field');
+        if ($parent.length === 0) $parent = $input.closest('.sat-consent');
+        $parent.find('.invalid-feedback').remove();
       }
       return isValid;
     }
 
     $('#satForm input, #satForm select').on('blur change input', function() {
-      validateField(this);
+      window.validateField(this);
     });
 
     document.getElementById('satForm').addEventListener('submit', function(e) {
       let isFormValid = true;
       $('#satForm [required], #satForm input[type="file"], #satForm input[type="tel"]').each(function() {
-        if (!validateField(this)) {
+        if (!window.validateField(this)) {
           isFormValid = false;
         }
       });
@@ -652,19 +660,70 @@
     const currentSection = document.querySelector(`.form-step[data-step="${step}"]`);
     if (!currentSection) return true;
 
-    const inputs = currentSection.querySelectorAll('input[required], select[required]');
+    const inputs = currentSection.querySelectorAll('input, select');
     let valid = true;
     inputs.forEach(input => {
-      if (!input.value || (input.type === 'checkbox' && !input.checked)) {
-        input.classList.add('is-invalid');
-        valid = false;
-      } else {
-        input.classList.remove('is-invalid');
+      if (window.validateField) {
+        if (!window.validateField(input)) {
+          valid = false;
+        }
       }
     });
 
+    if (step === 2) {
+      if (window.primaryContactInput && !window.primaryContactInput.isValidNumber()) {
+        valid = false;
+        $('#primary_contact_input').addClass('is-invalid');
+        if ($('#primary_contact_input').closest('.sat-field').find('.invalid-feedback').length === 0) {
+          $('#primary_contact_input').after('<div class="invalid-feedback">Invalid number for selected country</div>');
+        } else {
+          $('#primary_contact_input').closest('.sat-field').find('.invalid-feedback').text('Invalid number for selected country');
+        }
+      } else if (window.primaryContactInput) {
+        $('#primary_contact_input').removeClass('is-invalid');
+        $('#primary_contact_input').closest('.sat-field').find('.invalid-feedback').remove();
+      }
+
+      if (window.whatsappNumberInput && !window.whatsappNumberInput.isValidNumber()) {
+        valid = false;
+        $('#whatsapp_number_input').addClass('is-invalid');
+        if ($('#whatsapp_number_input').closest('.sat-field').find('.invalid-feedback').length === 0) {
+          $('#whatsapp_number_input').after('<div class="invalid-feedback">Invalid number for selected country</div>');
+        } else {
+          $('#whatsapp_number_input').closest('.sat-field').find('.invalid-feedback').text('Invalid number for selected country');
+        }
+      } else if (window.whatsappNumberInput) {
+        $('#whatsapp_number_input').removeClass('is-invalid');
+        $('#whatsapp_number_input').closest('.sat-field').find('.invalid-feedback').remove();
+      }
+    }
+
+    // specific validation for checkbox group in step 7
+    if (step === 7) {
+      const preferredCountries = currentSection.querySelectorAll('input[name="preferred_countries[]"]');
+      if (preferredCountries.length > 0) {
+        let isChecked = false;
+        preferredCountries.forEach(cb => {
+          if (cb.checked) isChecked = true;
+        });
+        if (!isChecked) {
+          valid = false;
+          // Add error message for countries
+          if ($('.Preferred-Country').find('.invalid-feedback').length === 0) {
+             $('.Preferred-Country').append('<div class="invalid-feedback d-block w-100">Please select at least one preferred country.</div>');
+          }
+        } else {
+           $('.Preferred-Country').find('.invalid-feedback').remove();
+        }
+      }
+    }
+
     if (!valid) {
-      alert('Please fill all required fields before continuing.');
+      if (typeof Swal !== 'undefined') {
+        Swal.fire('Error', 'Please fix form errors before continuing.', 'error');
+      } else {
+        alert('Please fix form errors before continuing.');
+      }
     }
     return valid;
   }

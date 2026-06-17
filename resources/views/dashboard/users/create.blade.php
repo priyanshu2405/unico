@@ -129,34 +129,59 @@
         const stateSelect = document.getElementById("state");
         const citySelect = document.getElementById("city");
 
-        // Set default options
+        // Helper to get country list
+        const populateCountries = () => {
+            const countries = Country.getAllCountries();
+            const userPermittedCountries = @json(auth()->user()->permitted_countries ?? []);
+            const canViewAllCountries = @json(auth()->user()->can_view_all_countries || auth()->user()->isAdmin() || auth()->user()->isManager());
+
+            countries.forEach(country => {
+                if (canViewAllCountries || userPermittedCountries.includes(country.name)) {
+                    const option = document.createElement('option');
+                    option.value = country.name;
+                    option.textContent = country.name;
+                    option.dataset.code = country.isoCode;
+                    countrySelect.appendChild(option);
+                }
+            });
+        };
+
+        // Initialize selects
         countrySelect.innerHTML = '<option value="">Select Country</option>';
         stateSelect.innerHTML = '<option value="">Select State</option>';
         citySelect.innerHTML = '<option value="">Select City</option>';
+        populateCountries();
 
-        // Populate Countries
-        const countries = Country.getAllCountries();
-        const userPermittedCountries = @json(auth()->user()->permitted_countries ?? []);
-        const canViewAllCountries = @json(auth()->user()->can_view_all_countries || auth()->user()->isAdmin() || auth()->user()->isManager());
-
-        countries.forEach(country => {
-            if (canViewAllCountries || userPermittedCountries.includes(country.name)) {
-                const option = document.createElement('option');
-                option.value = country.name;
-                option.textContent = country.name;
-                option.dataset.code = country.isoCode;
-                countrySelect.appendChild(option);
+        // Map phone prefixes to ISO country codes (add more as needed)
+        const prefixCountryMap = {
+            '92': 'PK' // Pakistan
+        };
+        const phoneInput = document.getElementById('phone');
+        function selectCountryFromPhone() {
+            const raw = phoneInput.value.replace(/[^0-9]/g, '');
+            if (!raw) return;
+            for (const prefix in prefixCountryMap) {
+                if (raw.startsWith(prefix)) {
+                    const iso = prefixCountryMap[prefix];
+                    const option = Array.from(countrySelect.options).find(o => o.dataset.code === iso);
+                    if (option) {
+                        countrySelect.value = option.value;
+                        countrySelect.dispatchEvent(new Event('change'));
+                    }
+                    break;
+                }
             }
-        });
+        }
+        // Trigger on load and when phone changes
+        selectCountryFromPhone();
+        phoneInput.addEventListener('input', selectCountryFromPhone);
 
         // Country Change Event
         countrySelect.addEventListener('change', function() {
             const selectedOption = this.options[this.selectedIndex];
             const countryCode = selectedOption.dataset.code;
-
             stateSelect.innerHTML = '<option value="">Select State</option>';
             citySelect.innerHTML = '<option value="">Select City</option>';
-
             if (countryCode) {
                 const states = State.getStatesOfCountry(countryCode);
                 states.forEach(state => {
@@ -173,9 +198,7 @@
         stateSelect.addEventListener('change', function() {
             const countryCode = countrySelect.options[countrySelect.selectedIndex].dataset.code;
             const stateCode = this.options[this.selectedIndex].dataset.code;
-
             citySelect.innerHTML = '<option value="">Select City</option>';
-
             if (countryCode && stateCode) {
                 const cities = City.getCitiesOfState(countryCode, stateCode);
                 cities.forEach(city => {

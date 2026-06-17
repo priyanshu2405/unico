@@ -203,7 +203,7 @@
 
 
 
-        <form id="satForm" method="POST" action="{{ route('auth.form.agent.post') }}" enctype="multipart/form-data">
+        <form id="satForm" method="POST" action="{{ route('auth.form.agent.post') }}" enctype="multipart/form-data" novalidate>
             @csrf
             <!-- ================= AGENT TYPE ================= -->
             <section class="sat-section form-step" data-step="1">
@@ -451,14 +451,14 @@
                         <label>Business Logo (Profile Photo) (JPG, PNG - Max 2MB)</label>
                         <input type="file" name="business_logo" accept=".jpg,.jpeg,.png">
                     </div>
-                     <div class="sat-consent form-step" data-step="8">
+            <div class="sat-consent sat-full">
                 <input type="checkbox" required id="consent_policy">
                 <p>
                     I agree to the <a href="javascript:void(0)" class="text-primary fw-bold" data-bs-toggle="modal" data-bs-target="#termsModal">Non-Refundable & Undisclosed Voucher Policy</a>.
                 </p>
             </div>
 
-            <div class="sat-consent form-step" data-step="9">
+            <div class="sat-consent sat-full">
                 <input type="checkbox" required id="consent_terms">
                 <p>
                     I accept the <a href="javascript:void(0)" class="text-primary fw-bold" data-bs-toggle="modal" data-bs-target="#termsModal">Terms & Conditions</a> and confirm all submitted information is correct.
@@ -576,7 +576,10 @@
             let isValid = true;
             let errorMessage = "";
 
-            if ($input.prop('required') && !$input.val() && $input.attr('type') !== 'file') {
+            if ($input.prop('required') && $input.attr('type') === 'checkbox' && !$input.prop('checked')) {
+                isValid = false;
+                errorMessage = "You must agree/accept to proceed";
+            } else if ($input.prop('required') && !$input.val() && $input.attr('type') !== 'file' && $input.attr('type') !== 'checkbox') {
                 isValid = false;
                 errorMessage = "This field is required";
             } else if ($input.attr('type') === 'email' && $input.val()) {
@@ -643,14 +646,22 @@
 
             if (!isValid) {
                 $input.addClass('is-invalid');
-                if ($input.closest('.sat-field').find('.invalid-feedback').length === 0) {
+                let $parent = $input.closest('.sat-field');
+                if ($parent.length === 0) {
+                    $parent = $input.closest('.sat-consent');
+                }
+                if ($parent.find('.invalid-feedback').length === 0) {
                     $input.after(`<div class="invalid-feedback">${errorMessage}</div>`);
                 } else {
-                    $input.closest('.sat-field').find('.invalid-feedback').text(errorMessage);
+                    $parent.find('.invalid-feedback').text(errorMessage);
                 }
             } else {
                 $input.removeClass('is-invalid');
-                $input.closest('.sat-field').find('.invalid-feedback').remove();
+                let $parent = $input.closest('.sat-field');
+                if ($parent.length === 0) {
+                    $parent = $input.closest('.sat-consent');
+                }
+                $parent.find('.invalid-feedback').remove();
             }
             return isValid;
         }
@@ -766,6 +777,11 @@
             if (currentStep < indicators.length) {
                 currentStep++;
                 showStep(currentStep);
+            } else {
+                const formEl = document.getElementById('satForm');
+                if (formEl) {
+                    formEl.requestSubmit();
+                }
             }
         });
     });

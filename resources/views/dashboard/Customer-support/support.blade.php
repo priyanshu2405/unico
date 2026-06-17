@@ -203,8 +203,8 @@
                                 </div>
                             </td>
                             <td class="text-center query-status-cell">
-                                <span class="badge rounded-pill px-3 py-2 status-badge {{ $query->status == 'pending' ? 'bg-soft-warning text-warning' : ($query->status == 'closed' ? 'bg-soft-success text-success' : 'bg-soft-secondary text-secondary') }}">
-                                    {{ ucfirst($query->status) }}
+                                <span class="badge rounded-pill px-3 py-2 status-badge {{ strtolower(trim($query->status)) == 'pending' ? 'bg-soft-warning text-warning' : (strtolower(trim($query->status)) == 'closed' ? 'bg-soft-success text-success' : 'bg-soft-secondary text-secondary') }}">
+                                    {{ ucfirst(trim($query->status)) }}
                                 </span>
                             </td>
                             <td class="px-4 text-end">
@@ -216,8 +216,8 @@
                                     data-topic="{{ $query->topic }}"
                                     data-issue="{{ $query->issue }}"
                                     data-description="{{ $query->description }}"
-                                    data-status="{{ $query->status }}"
-                                    data-status-class="bg-{{ $query->status == 'pending' ? 'soft-warning text-warning' : ($query->status == 'closed' ? 'soft-success text-success' : 'soft-secondary text-secondary') }}">
+                                    data-status="{{ strtolower(trim($query->status)) }}"
+                                    data-status-class="bg-{{ strtolower(trim($query->status)) == 'pending' ? 'soft-warning text-warning' : (strtolower(trim($query->status)) == 'closed' ? 'soft-success text-success' : 'soft-secondary text-secondary') }}">
                                     <i class="fas fa-eye"></i>
                                 </button>
                             </td>
@@ -359,9 +359,11 @@
             $('#modal-issue').text(btn.data('issue'));
             $('#modal-description').text(btn.data('description'));
             
-            const status = btn.data('status');
+            const rawStatus = btn.data('status');
+            const status = rawStatus ? rawStatus.toString().trim().toLowerCase() : '';
             const statusClass = btn.data('status-class');
-            $('#modal-status').text(status.charAt(0).toUpperCase() + status.slice(1))
+            
+            $('#modal-status').text(status ? (status.charAt(0).toUpperCase() + status.slice(1)) : '')
                             .removeClass()
                             .addClass('badge rounded-pill ms-2 ' + statusClass);
             

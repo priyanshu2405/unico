@@ -306,6 +306,8 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::get('/system-control', [SystemController::class, 'controlIndex'])->name('system.control');
     Route::post('/system-control/update', [SystemController::class, 'updateControl'])->name('system.control.update');
     Route::post('/system-control/toggle', [SystemController::class, 'toggleSystem'])->name('system.toggle');
+    Route::post('/system-control/clear-cache', [SystemController::class, 'clearCache'])->name('system.control.clear-cache');
+    Route::post('/system-control/backup-db', [SystemController::class, 'backupDatabase'])->name('system.control.backup-db');
     Route::get('/audit-logs', [SystemController::class, 'auditLogs'])->name('audit.index');
 
     // Reports & Revenue

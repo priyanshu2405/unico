@@ -102,10 +102,17 @@
                     <hr class="my-4">
 
                     <div class="d-grid gap-3">
-                        <button class="btn btn-light border btn-sm text-start py-3 px-3">
+                        <form id="clear-cache-form" action="{{ route('system.control.clear-cache') }}" method="POST" class="d-none">
+                            @csrf
+                        </form>
+                        <button type="button" class="btn btn-light border btn-sm text-start py-3 px-3" onclick="document.getElementById('clear-cache-form').submit();">
                             <i class="fas fa-broom me-2 text-warning"></i> Clear System Cache
                         </button>
-                        <button class="btn btn-light border btn-sm text-start py-3 px-3">
+
+                        <form id="backup-db-form" action="{{ route('system.control.backup-db') }}" method="POST" class="d-none">
+                            @csrf
+                        </form>
+                        <button type="button" class="btn btn-light border btn-sm text-start py-3 px-3" onclick="document.getElementById('backup-db-form').submit();">
                             <i class="fas fa-database me-2 text-info"></i> Backup Database
                         </button>
                     </div>

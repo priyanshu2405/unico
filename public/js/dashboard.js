@@ -170,18 +170,28 @@ function initIntlPhone() {
             }
         };
 
+        const syncHeaderOnly = () => {
+            const countryData = iti.getSelectedCountryData();
+            if (countryData && countryData.iso2) {
+                updateHeaderFlagUI(countryData.iso2, countryData.name);
+            }
+        };
+
         const syncHeaderAndDropdown = () => {
             const countryData = iti.getSelectedCountryData();
             if (countryData && countryData.iso2) {
                 updateHeaderFlagUI(countryData.iso2, countryData.name);
 
-                // Sync with country dropdown if it exists
+                // Sync with country dropdown if it exists — only on manual country change (not on load)
                 const countrySelect = document.getElementById('country');
                 if (countrySelect) {
                     const countryName = countryData.name.split(' (')[0];
                     for (let i = 0; i < countrySelect.options.length; i++) {
                         if (countrySelect.options[i].text === countryName || countrySelect.options[i].value === countryName) {
-                            countrySelect.selectedIndex = i;
+                            if (countrySelect.selectedIndex !== i) {
+                                countrySelect.selectedIndex = i;
+                                countrySelect.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
                             break;
                         }
                     }
@@ -193,7 +203,7 @@ function initIntlPhone() {
         input.addEventListener('keyup', updateFullPhone);
         input.addEventListener('countrychange', () => {
             updateFullPhone();
-            syncHeaderAndDropdown();
+            syncHeaderOnly();
         });
 
         // Numeric only and digit limitation
@@ -214,7 +224,7 @@ function initIntlPhone() {
         input.dataset.intlInitialized = "true";
 
         // Initial sync if value exists or after load
-        setTimeout(syncHeaderAndDropdown, 500);
+        setTimeout(syncHeaderOnly, 500);
 
         // Sync dropdown change back to iti
         const countrySelect = document.getElementById('country');
@@ -224,7 +234,10 @@ function initIntlPhone() {
                 const countryData = iti.getCountryData();
                 const matchedCountry = countryData.find(c => c.name.includes(selectedCountryName) || selectedCountryName.includes(c.name));
                 if (matchedCountry) {
-                    iti.setCountry(matchedCountry.iso2);
+                    const currentCountryData = iti.getSelectedCountryData();
+                    if (!currentCountryData || currentCountryData.iso2 !== matchedCountry.iso2) {
+                        iti.setCountry(matchedCountry.iso2);
+                    }
                 }
             });
         }
