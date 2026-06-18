@@ -334,7 +334,8 @@
         countrySelect.trigger('change');
 
         function updateStates(countryCode) {
-            stateSelect.empty().append('<option value="all">All States</option>');
+            const allOption = new Option('All States', 'all', true, true);
+            stateSelect.empty().append(allOption);
             citySelect.html('<option value="">Select City</option>');
             if (countryCode) {
                 const states = State.getStatesOfCountry(countryCode);
@@ -344,7 +345,7 @@
                     stateSelect.append(option);
                 });
             }
-            stateSelect.trigger('change');
+            stateSelect.trigger('change.select2');
         }
 
         function updateCities(countryCode, stateCode) {

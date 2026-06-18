@@ -389,7 +389,9 @@
         });
 
         function updateStates(countryCode, selectedStates = []) {
-            stateSelect.empty().append('<option value="all">All States</option>');
+            const isAllSelected = selectedStates.includes('all');
+            const allOption = new Option('All States', 'all', isAllSelected, isAllSelected);
+            stateSelect.empty().append(allOption);
             if (countryCode) {
                 const states = State.getStatesOfCountry(countryCode);
                 states.forEach(state => {
@@ -420,7 +422,13 @@
             } else {
                 stateSelect.prop('disabled', false).trigger('change.select2');
                 const countryCode = $(this).find('option:selected').data('code');
-                updateStates(countryCode, initialState);
+                const selectedCountryName = $(this).val()[0];
+                const initialCountryName = initialCountries[0];
+                if (selectedCountryName === initialCountryName) {
+                    updateStates(countryCode, initialState);
+                } else {
+                    updateStates(countryCode, ['all']);
+                }
             }
         });
 
