@@ -56,6 +56,16 @@
                 </div>
 
                 <div class="mb-4">
+                    <label class="form-label fw-bold">City</label>
+                    <select name="city" class="form-select">
+                        <option value="">All Cities</option>
+                        @foreach($cities as $city)
+                            <option value="{{ $city }}" {{ request('city') == $city ? 'selected' : '' }}>{{ $city }}</option>
+                        @endforeach
+                    </select>
+                </div>
+
+                <div class="mb-4">
                     <label class="form-label fw-bold">Currency</label>
                     <select name="currency" class="form-select">
                         <option value="">All Currencies</option>

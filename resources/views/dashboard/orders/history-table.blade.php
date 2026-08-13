@@ -29,8 +29,8 @@
             <tr>
                 <td class="ps-4">{{ $loop->iteration + ($orders->currentPage() - 1) * $orders->perPage() }}</td>
                 <td class="fw-bold text-primary">{{ $order->order_id }}</td>
-                <td class="text-nowrap">{{ $order->created_at->format('d-m-Y') }}</td>
-                <td class="text-nowrap">{{ $order->created_at->format('H:i:s') }}</td>
+                <td class="text-nowrap local-date" data-utc="{{ $order->created_at->format('Y-m-d\TH:i:s\Z') }}">{{ $order->created_at->format('d-m-Y') }}</td>
+                <td class="text-nowrap local-time" data-utc="{{ $order->created_at->format('Y-m-d\TH:i:s\Z') }}">{{ $order->created_at->format('H:i:s') }}</td>
                 <td>{{ $order->inventoryVoucher->brand_name ?? $order->v_brand_name ?? 'N/A' }}</td>
                 <td>{{ $order->inventoryVoucher->currency ?? $order->v_currency ?? 'N/A' }}</td>
                 <td>
@@ -53,7 +53,7 @@
                     {{ $order->inventoryVoucher->currency ?? $order->v_currency ?? 'N/A' }} 
                     {{ number_format($order->amount, 2) }}
                 </td>
-                <td>{{ $order->inventoryVoucher->taxes ?? $order->v_taxes ?? 'N/A' }}</td>
+                <td>{{ number_format($order->tax_amount ?? 0, 2) }}</td>
                 <td class="text-end">
                     {{ $order->inventoryVoucher->currency ?? $order->v_currency ?? 'N/A' }} 
                     {{ number_format($order->amount / max(1, $order->quantity), 2) }}

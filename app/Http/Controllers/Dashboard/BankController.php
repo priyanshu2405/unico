@@ -403,12 +403,7 @@ class BankController extends Controller
             }
 
             $session = \Stripe\Checkout\Session::create([
-                'payment_method_types' => ['us_bank_account'],
-                'payment_method_options' => [
-                    'us_bank_account' => [
-                        'verification_method' => 'automatic',
-                    ],
-                ],
+                'payment_method_types' => ['card'],
                 'metadata' => [
                     'user_id' => auth()->id(),
                 ],
@@ -430,7 +425,7 @@ class BankController extends Controller
 
             return redirect($session->url); // ✅ IMPORTANT
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
 
             return back()->with('error', $e->getMessage());
         }
@@ -589,7 +584,7 @@ class BankController extends Controller
             'is_verified' => true,
         ]);
 
-        return response()->json(['success' => true, 'message' => 'Bank account linked successfully.']);
+        return redirect()->route('bank.link')->with('success', 'Bank account linked successfully.');
     }
 
 
@@ -684,7 +679,7 @@ class BankController extends Controller
                     number_format($data['refunds'], 2, '.', ''),
                     $data['disputes'],
                     $data['conversion_rate'],
-                    number_format($data['sale_value'], 2, '.', ''),
+                    number_format($data['buying_sale_value'], 2, '.', ''),
                     '0.00',
                     is_string($data['created_at']) ? $data['created_at'] : $data['created_at']->format('Y-m-d')
                 ]);
@@ -701,8 +696,40 @@ class BankController extends Controller
         $reportData = collect();
 
         foreach ($methods as $method) {
-            $sold = \App\Models\Order::where('admin_payment_method_id', $method->id)->where('status', 'delivered')->sum('quantity');
-            $value = \App\Models\Order::where('admin_payment_method_id', $method->id)->where('status', 'delivered')->sum('amount');
+            $orders = \App\Models\Order::with('inventoryVoucher')
+                ->where('admin_payment_method_id', $method->id)
+                ->where('status', 'delivered')
+                ->get();
+
+            $sold = $orders->sum('quantity');
+            $value = $orders->sum('amount');
+
+            // Unique currencies of these orders
+            $currencies = $orders->map(function ($o) {
+                return $o->inventoryVoucher->local_currency ?? 'USD';
+            })->unique()->filter()->implode('/');
+
+            // Unique countries of these orders
+            $countries = $orders->flatMap(function ($o) {
+                return (array)($o->inventoryVoucher->country_region ?? []);
+            })->unique()->filter()->implode(', ');
+
+            // Calculate dynamic total value in buying currency
+            $buying_value_sum = $orders->sum(function ($order) {
+                $voucher = $order->inventoryVoucher;
+                if (!$voucher) return $order->amount;
+                $rate = 1.0;
+                if ($voucher->currency !== $voucher->local_currency) {
+                    $rate = (float)($voucher->currency_conversion_rate ?: 1);
+                }
+                return $order->amount / ($rate > 0 ? $rate : 1.0);
+            });
+
+            // Conversion rate label
+            $rates = $orders->map(function ($o) {
+                return number_format($o->inventoryVoucher->currency_conversion_rate ?? 1.0, 4);
+            })->unique()->filter()->implode('/');
+
             $refunds = \App\Models\RefundRequest::whereHas('order', function ($q) use ($method) {
                 $q->where('admin_payment_method_id', $method->id);
             })->where('status', 'approved')->sum('amount');
@@ -714,22 +741,53 @@ class BankController extends Controller
             $reportData->push([
                 'id' => $method->id,
                 'bank_name' => $method->bank_name,
-                'currency' => 'PKR',
-                'country' => $method->country ?? 'N/A',
+                'currency' => $currencies ?: 'USD',
+                'country' => $countries ?: 'Global',
                 'vouchers_sold' => $sold,
                 'sale_value' => $value,
+                'buying_sale_value' => $buying_value_sum,
                 'refunds' => $refunds,
                 'disputes' => $disputesCount,
-                'conversion_rate' => '1.00',
+                'conversion_rate' => $rates ?: '1.00',
                 'created_at' => $method->created_at
             ]);
         }
 
-        $stripeSold = \App\Models\Order::where('payment_method', 'stripe')->where('status', 'delivered')->sum('quantity');
-        $stripeValue = \App\Models\Order::where('payment_method', 'stripe')->where('status', 'delivered')->sum('amount');
+        // Add Stripe data
+        $stripeOrders = \App\Models\Order::with('inventoryVoucher')
+            ->where('payment_method', 'stripe')
+            ->where('status', 'delivered')
+            ->get();
+
+        $stripeSold = $stripeOrders->sum('quantity');
+        $stripeValue = $stripeOrders->sum('amount');
+        
+        $stripeCurrencies = $stripeOrders->map(function ($o) {
+            return $o->inventoryVoucher->local_currency ?? 'USD';
+        })->unique()->filter()->implode('/');
+
+        $stripeCountries = $stripeOrders->flatMap(function ($o) {
+            return (array)($o->inventoryVoucher->country_region ?? []);
+        })->unique()->filter()->implode(', ');
+
+        $stripeBuyingSum = $stripeOrders->sum(function ($order) {
+            $voucher = $order->inventoryVoucher;
+            if (!$voucher) return $order->amount;
+            $rate = 1.0;
+            if ($voucher->currency !== $voucher->local_currency) {
+                $rate = (float)($voucher->currency_conversion_rate ?: 1);
+            }
+            return $order->amount / ($rate > 0 ? $rate : 1.0);
+        });
+
+        $stripeRates = $stripeOrders->map(function ($o) {
+            return number_format($o->inventoryVoucher->currency_conversion_rate ?? 1.0, 4);
+        })->unique()->filter()->implode('/');
+
         $stripeRefunds = \App\Models\RefundRequest::whereHas('order', function ($q) {
             $q->where('payment_method', 'stripe');
         })->where('status', 'approved')->sum('amount');
+
         $stripeDisputes = \App\Models\Dispute::whereHas('user.orders', function ($q) {
             $q->where('payment_method', 'stripe');
         })->count();
@@ -737,13 +795,14 @@ class BankController extends Controller
         $reportData->push([
             'id' => 'stripe',
             'bank_name' => 'Stripe (Global)',
-            'currency' => 'USD/PKR',
-            'country' => 'GLB',
+            'currency' => $stripeCurrencies ?: 'USD',
+            'country' => $stripeCountries ?: 'GLB',
             'vouchers_sold' => $stripeSold,
             'sale_value' => $stripeValue,
+            'buying_sale_value' => $stripeBuyingSum,
             'refunds' => $stripeRefunds,
             'disputes' => $stripeDisputes,
-            'conversion_rate' => 'Dynamic',
+            'conversion_rate' => $stripeRates ?: 'Dynamic',
             'created_at' => now()
         ]);
 

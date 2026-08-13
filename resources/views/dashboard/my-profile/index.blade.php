@@ -173,21 +173,31 @@
                                         </div>
 
                                         <div class="col-md-12">
-                                            <h6 class="fw-bold mt-3 mb-2">Bank Details</h6>
-                                            <div class="row g-3">
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Bank Name</label>
-                                                    <input type="text" name="bank_name" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->bank_name }}">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Bank Country</label>
-                                                    <input type="text" name="bank_country" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->bank_country }}">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Account No / IBAN</label>
-                                                    <input type="text" name="account_number" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->account_number }}">
-                                                </div>
+                                            <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                                                <h6 class="fw-bold mb-0">Linked Bank Accounts</h6>
+                                                <a href="{{ route('bank.link') }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">Manage Banks</a>
                                             </div>
+                                            @php
+                                                $linkedBanks = \App\Models\BankAccountModel::where('user_id', auth()->id())->get();
+                                            @endphp
+                                            @if($linkedBanks->count() > 0)
+                                                <div class="row g-3">
+                                                    @foreach($linkedBanks as $bank)
+                                                    <div class="col-md-6">
+                                                        <div class="p-3 bg-light border rounded-3">
+                                                            <div class="fw-bold">{{ $bank->bank_name }}</div>
+                                                            <div class="text-muted small">{{ $bank->account_holder_name }}</div>
+                                                            <div class="text-muted font-monospace small">•••• {{ substr($bank->account_number, -4) }}</div>
+                                                            <div class="text-muted small">{{ $bank->account_type }}</div>
+                                                        </div>
+                                                    </div>
+                                                    @endforeach
+                                                </div>
+                                            @else
+                                                <div class="p-3 bg-light border rounded-3 text-center text-muted">
+                                                    <p class="mb-0 small">No bank accounts linked yet.</p>
+                                                </div>
+                                            @endif
                                         </div>
                                     </div>
                                 @elseif($user->isAgent() || $user->account_type === 'reseller_agent')
@@ -230,27 +240,45 @@
                                             <label class="text-muted small mb-1 d-block text-uppercase fw-bold">Country</label>
                                             <input type="text" name="country" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->country }}">
                                         </div>
+                                        <div class="col-md-6">
+                                            <label class="text-muted small mb-1 d-block text-uppercase fw-bold">State / Province</label>
+                                            <input type="text" name="state" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->state }}">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="text-muted small mb-1 d-block text-uppercase fw-bold">City</label>
+                                            <input type="text" name="city" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->city }}">
+                                        </div>
                                         <div class="col-md-12">
                                             <label class="text-muted small mb-1 d-block text-uppercase fw-bold">Address</label>
                                             <textarea name="address" class="form-control bg-light border-0 p-3 rounded-3" rows="2">{{ $user->address }}</textarea>
                                         </div>
 
                                         <div class="col-md-12">
-                                            <h6 class="fw-bold mt-3 mb-2">Bank Details</h6>
-                                            <div class="row g-3">
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Bank Name</label>
-                                                    <input type="text" name="bank_name" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->bank_name }}">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Bank Country</label>
-                                                    <input type="text" name="bank_country" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->bank_country }}">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Account No / IBAN</label>
-                                                    <input type="text" name="bank_account_number" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->bank_account_number }}">
-                                                </div>
+                                            <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                                                <h6 class="fw-bold mb-0">Linked Bank Accounts</h6>
+                                                <a href="{{ route('bank.link') }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">Manage Banks</a>
                                             </div>
+                                            @php
+                                                $linkedBanks = \App\Models\BankAccountModel::where('user_id', auth()->id())->get();
+                                            @endphp
+                                            @if($linkedBanks->count() > 0)
+                                                <div class="row g-3">
+                                                    @foreach($linkedBanks as $bank)
+                                                    <div class="col-md-6">
+                                                        <div class="p-3 bg-light border rounded-3">
+                                                            <div class="fw-bold">{{ $bank->bank_name }}</div>
+                                                            <div class="text-muted small">{{ $bank->account_holder_name }}</div>
+                                                            <div class="text-muted font-monospace small">•••• {{ substr($bank->account_number, -4) }}</div>
+                                                            <div class="text-muted small">{{ $bank->account_type }}</div>
+                                                        </div>
+                                                    </div>
+                                                    @endforeach
+                                                </div>
+                                            @else
+                                                <div class="p-3 bg-light border rounded-3 text-center text-muted">
+                                                    <p class="mb-0 small">No bank accounts linked yet.</p>
+                                                </div>
+                                            @endif
                                         </div>
                                     </div>
                                 @elseif($user->account_type === 'support_team' || $user->account_type === 'manager')
@@ -307,21 +335,31 @@
                                         </div>
 
                                         <div class="col-md-12">
-                                            <h6 class="fw-bold mt-3 mb-2">Bank Details</h6>
-                                            <div class="row g-3">
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Bank Name</label>
-                                                    <input type="text" name="bank_name" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->bank_name }}">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Bank Country</label>
-                                                    <input type="text" name="bank_country" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->bank_country }}">
-                                                </div>
-                                                <div class="col-md-4">
-                                                    <label class="text-muted small mb-1">Account No / IBAN</label>
-                                                    <input type="text" name="bank_account_number" class="form-control bg-light border-0 p-3 rounded-3" value="{{ $user->bank_account_number }}">
-                                                </div>
+                                            <div class="d-flex justify-content-between align-items-center mt-3 mb-2">
+                                                <h6 class="fw-bold mb-0">Linked Bank Accounts</h6>
+                                                <a href="{{ route('bank.link') }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">Manage Banks</a>
                                             </div>
+                                            @php
+                                                $linkedBanks = \App\Models\BankAccountModel::where('user_id', auth()->id())->get();
+                                            @endphp
+                                            @if($linkedBanks->count() > 0)
+                                                <div class="row g-3">
+                                                    @foreach($linkedBanks as $bank)
+                                                    <div class="col-md-6">
+                                                        <div class="p-3 bg-light border rounded-3">
+                                                            <div class="fw-bold">{{ $bank->bank_name }}</div>
+                                                            <div class="text-muted small">{{ $bank->account_holder_name }}</div>
+                                                            <div class="text-muted font-monospace small">•••• {{ substr($bank->account_number, -4) }}</div>
+                                                            <div class="text-muted small">{{ $bank->account_type }}</div>
+                                                        </div>
+                                                    </div>
+                                                    @endforeach
+                                                </div>
+                                            @else
+                                                <div class="p-3 bg-light border rounded-3 text-center text-muted">
+                                                    <p class="mb-0 small">No bank accounts linked yet.</p>
+                                                </div>
+                                            @endif
                                         </div>
                                     </div>
                                 @else

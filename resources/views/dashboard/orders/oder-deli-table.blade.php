@@ -15,7 +15,7 @@
             <tr>
                 <td class="ps-4">
                     <div class="fw-bold text-dark">{{ $order->order_id }}</div>
-                    <div class="text-muted small">{{ $order->created_at->format('d M Y H:i') }}</div>
+                    <div class="text-muted small local-datetime" data-utc="{{ $order->created_at->format('Y-m-d\TH:i:s\Z') }}">{{ $order->created_at->format('d M Y H:i') }}</div>
                     <div class="text-muted small">SKU: <span class="fw-bold text-primary">{{ $order->voucher_id }}</span></div>
                     <div class="text-muted small">Country: <span class="badge bg-light text-dark border">{{ $order->user->country ?? 'N/A' }}</span></div>
                     <div class="text-muted small">{{ $order->voucher->name ?? $order->voucher_type }} (Qty: {{ $order->quantity }})</div>

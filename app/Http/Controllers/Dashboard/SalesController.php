@@ -59,13 +59,16 @@ class SalesController extends Controller
         }
 
         // Filter by Inventory Voucher fields
-        if ($request->anyFilled(['currency', 'country_region', 'brand_name', 'voucher_variant'])) {
+        if ($request->anyFilled(['currency', 'country_region', 'city', 'brand_name', 'voucher_variant'])) {
             $query->whereHas('inventoryVoucher', function ($q) use ($request) {
                 if ($request->filled('currency')) {
                     $q->where('currency', $request->currency);
                 }
                 if ($request->filled('country_region')) {
                     $q->where('country_region', $request->country_region);
+                }
+                if ($request->filled('city')) {
+                    $q->whereJsonContains('city', $request->city);
                 }
                 if ($request->filled('brand_name')) {
                     $q->where('brand_name', 'like', "%{$request->brand_name}%");
@@ -117,12 +120,13 @@ class SalesController extends Controller
         $states = $filterData->pluck('user.state')->unique()->filter()->values();
         $currencies = $filterData->pluck('inventoryVoucher.currency')->unique()->filter()->values();
         $voucherTypes = $filterData->pluck('voucher_type')->unique()->filter()->values();
+        $cities = $filterData->pluck('inventoryVoucher.city')->flatten()->unique()->filter()->values();
 
         if ($request->ajax()) {
             return view('dashboard.sales.sales-table', compact('sales'))->render();
         }
 
-        return view('dashboard.sales.sales-index', compact('sales', 'brands', 'countries', 'states', 'currencies', 'voucherTypes'));
+        return view('dashboard.sales.sales-index', compact('sales', 'brands', 'countries', 'states', 'currencies', 'voucherTypes', 'cities'));
     }
 
     public function export(Request $request)
@@ -175,10 +179,13 @@ class SalesController extends Controller
         }
 
         // Filter by Inventory Voucher fields
-        if ($request->anyFilled(['currency', 'brand_name', 'voucher_variant'])) {
+        if ($request->anyFilled(['currency', 'brand_name', 'voucher_variant', 'city'])) {
             $query->whereHas('inventoryVoucher', function ($q) use ($request) {
                 if ($request->filled('currency')) {
                     $q->where('currency', $request->currency);
+                }
+                if ($request->filled('city')) {
+                    $q->whereJsonContains('city', $request->city);
                 }
                 if ($request->filled('brand_name')) {
                     $q->where('brand_name', $request->brand_name);
@@ -218,9 +225,12 @@ class SalesController extends Controller
             'Sale ID',
             'Date',
             'Time',
+            'Buyer ID',
+            'Buyer Name',
             'Buyer Type',
             'Local currency',
             'Country/Region',
+            'City',
             'Voucher Variant',
             'Voucher Type',
             'Sales Invoice No.',
@@ -260,9 +270,12 @@ class SalesController extends Controller
                     $record->order_id,
                     $record->created_at->format('d M Y'),
                     $record->created_at->format('H:i A'),
+                    $record->user->user_id ?? 'N/A',
+                    trim(($record->user->first_name ?? '') . ' ' . ($record->user->last_name ?? '')) ?: 'N/A',
                     ucfirst(str_replace('_', ' ', $record->user_role)),
                     $currencyCode,
                     $record->user->country ?? 'N/A',
+                    optional($record->inventoryVoucher)->city ? (is_array($record->inventoryVoucher->city) ? implode(', ', $record->inventoryVoucher->city) : $record->inventoryVoucher->city) : 'N/A',
                     $record->inventoryVoucher->voucher_variant ?? 'N/A',
                     $record->voucher_type,
                     $record->order_id,

@@ -12,10 +12,25 @@ class SupportQuery extends Model
         'issue',
         'description',
         'status',
+        'country',
+        'region',
+        'assigned_to',
+        'escalated_by',
+        'escalation_level',
     ];
 
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function assignedTo()
+    {
+        return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function escalatedBy()
+    {
+        return $this->belongsTo(User::class, 'escalated_by');
     }
 }

@@ -5,6 +5,7 @@
                 <th rowspan="2" class="bg-light">Sr. No.</th>
                 <th rowspan="2" class="bg-light">SKU ID</th>
                 <th rowspan="2" class="bg-light">Voucher Type</th>
+                <th rowspan="2" class="bg-light">City</th>
                 <th colspan="3" style="background-color: #ffff00;">Opening Stock</th>
                 <th colspan="3" style="background-color: #92d050;">Purchases (Additions)</th>
                 <th colspan="3" style="background-color: #00b0f0;">Stock Available</th>
@@ -44,6 +45,7 @@
                 <td class="text-center">{{ $stock_data->firstItem() + $index }}</td>
                 <td class="fw-bold">{{ $item->sku_id }}</td>
                 <td>{{ $item->voucher_type }}</td>
+                <td>{{ $item->city ? (is_array($item->city) ? implode(', ', $item->city) : $item->city) : 'N/A' }}</td>
 
                 {{-- Opening --}}
                 <td class="text-center">{{ $item->opening_qty }}</td>
@@ -78,7 +80,7 @@
             </tr>
             @empty
             <tr>
-                <td colspan="18" class="text-center py-5 text-muted">No stock records found.</td>
+                <td colspan="19" class="text-center py-5 text-muted">No stock records found.</td>
             </tr>
             @endforelse
         </tbody>

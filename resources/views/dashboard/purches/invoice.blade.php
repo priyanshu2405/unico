@@ -84,8 +84,8 @@
                                 <span>{{$order->inventoryVoucher->currency ?? 'N/A' }} {{ number_format($order->amount, 2) }}</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
-                                <span class="text-muted">Tax (0%):</span>
-                                <span>{{ $order->tax ?? 'N/A' }}</span>
+                                <span class="text-muted">Tax:</span>
+                                <span>{{ $order->inventoryVoucher->currency ?? 'N/A' }} {{ number_format($order->tax_amount ?? 0, 2) }}</span>
                             </div>
                             <hr>
                             <div class="d-flex justify-content-between align-items-center mb-0">

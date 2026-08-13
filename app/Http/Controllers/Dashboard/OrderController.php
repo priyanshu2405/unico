@@ -23,7 +23,9 @@ class OrderController extends Controller
             abort(403, 'Unauthorized access to orders.');
         }
 
-        $query = Order::with(['user', 'voucher', 'inventoryVoucher'])->latest();
+        $query = Order::with(['user', 'voucher', 'inventoryVoucher'])
+            ->where('voucher_type', '!=', 'wallet_topup')
+            ->latest();
 
         $authUser = auth()->user();
         if (($authUser->isManager() || $authUser->isSupport()) && !$authUser->isAdmin()) {
@@ -76,7 +78,9 @@ class OrderController extends Controller
 
     public function export(Request $request)
     {
-        $query = Order::with(['user', 'voucher'])->latest();
+        $query = Order::with(['user', 'voucher'])
+            ->where('voucher_type', '!=', 'wallet_topup')
+            ->latest();
 
         $authUser = auth()->user();
         if (($authUser->isManager() || $authUser->isSupport()) && !$authUser->isAdmin()) {
@@ -259,7 +263,8 @@ class OrderController extends Controller
                 'inventory_vouchers.expiry_date as v_expiry_date',
                 'inventory_vouchers.taxes as v_taxes'
             )
-            ->where('orders.user_id', auth()->id());
+            ->where('orders.user_id', auth()->id())
+            ->where('orders.voucher_type', '!=', 'wallet_topup');
 
         // Filters based on User Request
         if ($request->filled('order_id')) {
@@ -323,7 +328,8 @@ class OrderController extends Controller
                 'inventory_vouchers.voucher_type as v_voucher_type',
                 'inventory_vouchers.expiry_date as v_expiry_date'
             )
-            ->where('orders.user_id', auth()->id());
+            ->where('orders.user_id', auth()->id())
+            ->where('orders.voucher_type', '!=', 'wallet_topup');
 
         // Apply same filters as history
         if ($request->filled('order_id')) {
@@ -408,7 +414,7 @@ class OrderController extends Controller
                 $order->created_at->format('Y-m-d'),
                 $order->quantity,
                 $order->amount,
-                $order->inventoryVoucher->taxes ?? '0.00',
+                $order->tax_amount ?? '0.00',
                 number_format($order->amount / max(1, $order->quantity), 2, '.', ''),
                 $order->created_at->format('Y-m-d'),
                 ($order->inventoryVoucher->expiry_date ?? $order->v_expiry_date) ? \Carbon\Carbon::parse($order->inventoryVoucher->expiry_date ?? $order->v_expiry_date)->format('Y-m-d') : 'N/A',

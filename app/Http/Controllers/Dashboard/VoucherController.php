@@ -97,6 +97,16 @@ class VoucherController extends Controller
                     ->orWhereJsonContains('state', $user->state)
                     ->orWhereJsonContains('state', 'all');
             });
+
+            // If voucher has city restrictions, apply them.
+            // If city is empty or null, it's available to all cities in that state.
+            $query->where(function ($q) use ($user) {
+                $q->whereNull('city')
+                    ->orWhere('city', '[]')
+                    ->orWhere('city', 'null')
+                    ->orWhereJsonContains('city', $user->city)
+                    ->orWhereJsonContains('city', 'all');
+            });
         }
 
         // Filter by SKU ID
@@ -190,11 +200,21 @@ class VoucherController extends Controller
         $voucher = InventoryVoucher::findOrFail($id);
         $user = auth()->user();
 
-        // Check if voucher is available in user's country
+        // Check if voucher is available in user's country, state, and city
         if (!in_array($user->account_type, ['admin', 'manager'])) {
             $countries = is_array($voucher->country_region) ? $voucher->country_region : [$voucher->country_region];
             if (!in_array($user->country, $countries) && !in_array('all', $countries) && !in_array('GLB', $countries)) {
                 return redirect()->route('vouchers')->with('error', 'This voucher is not available in your country.');
+            }
+
+            $states = is_array($voucher->state) ? $voucher->state : json_decode($voucher->state, true);
+            if (!empty($states) && !in_array('all', (array)$states) && !in_array($user->state, (array)$states)) {
+                return redirect()->route('vouchers')->with('error', 'This voucher is not available in your state.');
+            }
+
+            $cities = is_array($voucher->city) ? $voucher->city : json_decode($voucher->city, true);
+            if (!empty($cities) && !in_array('all', (array)$cities) && !in_array($user->city, (array)$cities)) {
+                return redirect()->route('vouchers')->with('error', 'This voucher is not available in your city.');
             }
         }
 
@@ -217,8 +237,16 @@ class VoucherController extends Controller
 
         $maxAllowed = $userTotalLimit - $boughtTotalLast24h;
 
-        // Check quantity availability
-        if ($voucher->quantity <= 0 || $voucher->status === 'OUT OF STOCK') {
+        // Check quantity availability dynamically to prevent out-of-sync database errors
+        $allCodes = is_array($voucher->upload_vouchers) ? $voucher->upload_vouchers : [];
+        $deliveredCodes = is_array($voucher->delivered_vouchers) ? $voucher->delivered_vouchers : [];
+        $remainingCodes = array_diff($allCodes, $deliveredCodes);
+        $pendingOrdersQty = Order::where('voucher_id', $voucher->sku_id)
+            ->whereIn('status', ['pending', 'completed'])
+            ->sum('quantity');
+        $availableStock = count($remainingCodes) - $pendingOrdersQty;
+
+        if ($availableStock <= 0 || $voucher->status === 'OUT OF STOCK') {
             return redirect()->route('vouchers')->with('error', 'This voucher is out of stock.');
         }
 
@@ -275,7 +303,16 @@ class VoucherController extends Controller
             return response()->json(['message' => 'Your last 24 hours limit has been reached. Remaining: ' . max(0, $userTotalLimit - $boughtTotalLast24h)], 400);
         }
 
-        if ($voucher->quantity < $request->quantity || $voucher->status === 'OUT OF STOCK') {
+        // Calculate available stock dynamically
+        $allCodes = is_array($voucher->upload_vouchers) ? $voucher->upload_vouchers : [];
+        $deliveredCodes = is_array($voucher->delivered_vouchers) ? $voucher->delivered_vouchers : [];
+        $remainingCodes = array_diff($allCodes, $deliveredCodes);
+        $pendingOrdersQty = Order::where('voucher_id', $voucher->sku_id)
+            ->whereIn('status', ['pending', 'completed'])
+            ->sum('quantity');
+        $availableStock = count($remainingCodes) - $pendingOrdersQty;
+
+        if ($availableStock < $request->quantity || $voucher->status === 'OUT OF STOCK') {
             return response()->json(['message' => 'Insufficient stock available.'], 400);
         }
 
@@ -406,6 +443,10 @@ class VoucherController extends Controller
                 }
             }
 
+            // Calculate tax_amount
+            $unitTaxes = $voucher->purchased_qty > 0 ? (float) $voucher->taxes / $voucher->purchased_qty : 0;
+            $taxAmount = $unitTaxes * $request->quantity;
+
             // Create Order
             $orderData = [
                 'order_id' => 'PUR-' . date('Ymd') . '-' . str_pad(Order::whereDate('created_at', now())->count() + 1, 4, '0', STR_PAD_LEFT),
@@ -416,6 +457,7 @@ class VoucherController extends Controller
                 'voucher_id' => $voucher->sku_id,
                 'quantity' => $request->quantity,
                 'amount' => $totalAmount,
+                'tax_amount' => $taxAmount,
                 'status' => $status,
                 'referral_points' => $totalReferralPoints,
                 'bonus_amount' => $totalBonusPoints,
@@ -601,6 +643,15 @@ public function processDelivery($order, $codes)
                     ->orWhere('state', 'null')
                     ->orWhereJsonContains('state', $user->state)
                     ->orWhereJsonContains('state', 'all');
+            });
+
+            // If voucher has city restrictions, apply them.
+            $query->where(function ($q) use ($user) {
+                $q->whereNull('city')
+                    ->orWhere('city', '[]')
+                    ->orWhere('city', 'null')
+                    ->orWhereJsonContains('city', $user->city)
+                    ->orWhereJsonContains('city', 'all');
             });
         }
 

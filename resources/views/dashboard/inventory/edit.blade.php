@@ -44,9 +44,12 @@
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Currency</label>
-                        <input type="text" name="currency" id="currency" class="form-control" value="{{ old('currency', $inventory->currency) }}" required>
+                        <label class="form-label small fw-bold text-uppercase">City</label>
+                        <select name="city[]" id="city" class="form-select select2-city" multiple>
+                            <option value="all" {{ (is_array($inventory->city) && in_array('all', $inventory->city)) ? 'selected' : '' }}>All Cities</option>
+                        </select>
                     </div>
+
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Voucher Variant</label>
                         <input type="text" name="voucher_variant" id="voucher_variant" class="form-control" value="{{ old('voucher_variant', $inventory->voucher_variant) }}" placeholder="e.g. Subscription">
@@ -114,7 +117,7 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Purchase Value / Unit</label>
-                        <input type="number" step="0.01" name="purchase_value_per_unit" class="form-control" value="{{ old('purchase_value_per_unit', $inventory->purchase_value_per_unit) }}" required>
+                        <input type="number" step="0.01" name="purchase_value_per_unit" class="form-control bg-light" value="{{ old('purchase_value_per_unit', $inventory->purchase_value_per_unit) }}" readonly required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Taxes</label>
@@ -125,7 +128,7 @@
                         <input type="text" name="bank" class="form-control" value="{{ old('bank', $inventory->bank) }}">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Local Currency</label>
+                        <label class="form-label small fw-bold text-uppercase">Purchase Currency</label>
                         <input type="text" name="local_currency" class="form-control" value="{{ old('local_currency', $inventory->local_currency) }}">
                     </div>
                     <div class="col-md-3">
@@ -140,6 +143,10 @@
                         <hr>
                     </div>
 
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-uppercase text-primary">Sale Currency</label>
+                        <input type="text" name="currency" id="currency" class="form-control border-primary" value="{{ old('currency', $inventory->currency) }}" required>
+                    </div>
                     <div class="col-md-4">
                         <label class="form-label small fw-bold text-uppercase text-success">Agent Sale Price</label>
                         <input type="number" step="0.01" name="agent_sale_price" class="form-control border-success" value="{{ old('agent_sale_price', $inventory->agent_sale_price) }}" required>
@@ -235,7 +242,14 @@
 
         $('.select2-state').select2({
             placeholder: "Select State",
-            allowClear: true
+            allowClear: true,
+            closeOnSelect: false
+        });
+
+        $('.select2-city').select2({
+            placeholder: "Select City",
+            allowClear: true,
+            closeOnSelect: false
         });
 
         function generateSKU() {
@@ -370,14 +384,17 @@
 <script type="module">
     import {
         Country,
-        State
+        State,
+        City
     } from "https://cdn.jsdelivr.net/npm/country-state-city@3.2.1/+esm";
 
     document.addEventListener("DOMContentLoaded", function() {
         const countrySelect = $("#country");
         const stateSelect = $("#state");
+        const citySelect = $("#city");
         const initialCountries = {!! json_encode($inventory->country_region ?? []) !!};
         const initialState = {!! json_encode($inventory->state ?? []) !!};
+        const initialCity = {!! json_encode($inventory->city ?? '') !!};
 
         // Populate Countries
         const countries = Country.getAllCountries();
@@ -404,6 +421,21 @@
             stateSelect.trigger('change.select2');
         }
 
+        function updateCities(countryCode, stateCode, selectedCities = []) {
+            const isAllSelected = selectedCities.includes('all');
+            const allOption = new Option('All Cities', 'all', isAllSelected, isAllSelected);
+            citySelect.empty().append(allOption);
+            if (countryCode && stateCode) {
+                const cities = City.getCitiesOfState(countryCode, stateCode);
+                cities.forEach(city => {
+                    const isSelected = selectedCities.includes(city.name);
+                    const option = new Option(city.name, city.name, isSelected, isSelected);
+                    citySelect.append(option);
+                });
+            }
+            citySelect.trigger('change.select2');
+        }
+
         // Country Change Event
         countrySelect.on('change', function() {
             const selectedValues = $(this).val();
@@ -418,9 +450,12 @@
 
             if (!selectedValues || selectedValues.length !== 1 || selectedValues.includes('all')) {
                 stateSelect.prop('disabled', true).trigger('change.select2');
+                citySelect.prop('disabled', true).trigger('change.select2');
                 stateSelect.html('<option value="">State Disabled (Multi/All)</option>');
+                citySelect.html('<option value="">City Disabled (Multi/All)</option>');
             } else {
                 stateSelect.prop('disabled', false).trigger('change.select2');
+                citySelect.prop('disabled', false).trigger('change.select2');
                 const countryCode = $(this).find('option:selected').data('code');
                 const selectedCountryName = $(this).val()[0];
                 const initialCountryName = initialCountries[0];
@@ -442,6 +477,41 @@
             // Handle All States logic
             if (selectedStates && selectedStates.includes('all')) {
                 if (selectedStates.length > 1) {
+                    $(this).val(['all']).trigger('change.select2');
+                    return;
+                }
+            }
+
+            const countryOption = countrySelect.find('option:selected')[0];
+            const countryCode = countryOption ? countryOption.dataset.code : null;
+
+            if (!selectedStates || selectedStates.length !== 1 || selectedStates.includes('all')) {
+                citySelect.prop('disabled', true).trigger('change.select2');
+                citySelect.html('<option value="">City Disabled (Multi/All)</option>');
+            } else {
+                citySelect.prop('disabled', false).trigger('change.select2');
+                const stateOption = $(this).find('option:selected')[0];
+                const stateCode = stateOption ? stateOption.dataset.code : null;
+                
+                if (countryCode && stateCode) {
+                    const selectedStateName = $(this).val()[0];
+                    if (selectedStateName === initialState[0]) {
+                        updateCities(countryCode, stateCode, initialCity);
+                    } else {
+                        updateCities(countryCode, stateCode, ['all']);
+                    }
+                }
+            }
+        });
+        
+        // Trigger state logic initially to handle city population
+        stateSelect.trigger('change');
+        
+        // City Change Event
+        citySelect.on('change', function() {
+            const selectedCities = $(this).val();
+            if (selectedCities && selectedCities.includes('all')) {
+                if (selectedCities.length > 1) {
                     $(this).val(['all']).trigger('change.select2');
                     return;
                 }

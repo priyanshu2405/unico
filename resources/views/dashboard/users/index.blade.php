@@ -102,6 +102,9 @@
                     <i class="fas fa-sync me-1"></i> Toggle Status
                 </button>
                 @endif
+                <a href="{{ route('users.export.source', request()->all()) }}" class="btn btn-success btn-sm px-3 shadow-sm">
+                    <i class="fas fa-file-csv me-1"></i> Customer Source
+                </a>
                 <a href="{{ route('users.pdf', request()->all()) }}" id="csv-export-link" class="btn btn-success btn-sm px-3 shadow-sm">
                     <i class="fas fa-file-csv me-1"></i> CSV
                 </a>

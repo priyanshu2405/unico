@@ -28,9 +28,7 @@
         <div class="gift-voucher-card {{ $isInStock ? '' : 'grayscale' }}">
             <!-- Status & Meta Overlay -->
             <div class="card-status-overlay">
-                @if($isInStock)
-                    <span class="badge bg-success shadow-sm">IN STOCK ({{ $stock }})</span>
-                @else
+                @if(!$isInStock)
                     <span class="badge bg-danger shadow-sm">OUT OF STOCK</span>
                 @endif
                 <span class="badge bg-light text-dark shadow-sm ms-1">{{ $countryDisplay }}</span>

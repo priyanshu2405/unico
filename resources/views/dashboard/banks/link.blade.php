@@ -34,12 +34,9 @@
             <button class="btn btn-primary shadow-sm px-3" data-bs-toggle="modal" data-bs-target="#addMoneyModal">
                 <i class="fas fa-plus-circle me-1"></i> Add Wallet Credit
             </button>
-              <!-- <button class="btn btn-outline-info shadow-sm px-3" data-bs-toggle="modal" data-bs-target="#linkBankModal">
-                <i class="fas fa-plus me-1"></i> Manual Link
+            <button class="btn btn-outline-info shadow-sm px-3" data-bs-toggle="modal" data-bs-target="#linkBankModal">
+                <i class="fas fa-link me-1"></i> Link Bank
             </button>
-            <button id="linkBankBtn" class="btn btn-outline-primary shadow-sm px-3">
-                <i class="fas fa-link me-1"></i> Link Bank (Secure)
-            </button> -->
         </div>
     </div>
 
@@ -123,7 +120,7 @@
                             <div class="text-muted">
                                 <i class="fas fa-university fa-3x mb-2 opacity-25"></i>
                                 <p>No bank accounts linked yet.</p>
-                               <button class="btn btn-sm btn-primary"  data-bs-toggle="modal" data-bs-target="#addMoneyModal">Link Now</button>
+                               <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#linkBankModal">Link Now</button>
                             </div>
                         </div>
                         @endforelse
@@ -256,9 +253,24 @@
                                     <span class="fw-bold">KuickPay</span>
                                 </label>
                             </div>
+                            <div class="col-6">
+                                <input type="radio" class="btn-check" name="payment_method" id="method_linked_bank" value="linked_bank" autocomplete="off">
+                                <label class="btn btn-outline-primary w-100 py-3 d-flex flex-column align-items-center gap-2" for="method_linked_bank">
+                                    <i class="fas fa-university fa-2x"></i>
+                                    <span class="fw-bold">Linked Bank</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
 
+                    <div id="linked_bank_select" class="mb-3 d-none">
+                        <label class="form-label fw-bold small text-muted">SELECT BANK ACCOUNT</label>
+                        <select name="bank_id" class="form-select bg-light border-0 p-2 shadow-none">
+                            @foreach($banks as $bank)
+                                <option value="{{ $bank->id }}">{{ $bank->bank_name }} (**** {{ substr($bank->account_number, -4) }})</option>
+                            @endforeach
+                        </select>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold small text-muted">ENTER AMOUNT</label>
 
@@ -293,19 +305,69 @@
                 document.querySelectorAll('input[name="payment_method"]').forEach(radio => {
                     radio.addEventListener('change', function() {
                         const form = document.getElementById('paymentForm');
-                        if (this.value === 'stripe') {
-                            form.action = "{{ route('stripe.checkout.session') }}";
-                        } else if (this.value === 'paypal') {
-                            form.action = "{{ route('paypal.checkout') }}";
-                        } else if (this.value === 'wise') {
-                            form.action = "{{ route('wise.checkout') }}";
-                        } else if (this.value === 'kuickpay') {
-                            form.action = "{{ route('kuickpay.checkout') }}";
+                        const bankSelect = document.getElementById('linked_bank_select');
+                        
+                        if (this.value === 'linked_bank') {
+                            bankSelect.classList.remove('d-none');
+                            form.action = "{{ route('bank.payment') }}";
+                        } else {
+                            bankSelect.classList.add('d-none');
+                            if (this.value === 'stripe') {
+                                form.action = "{{ route('stripe.checkout.session') }}";
+                            } else if (this.value === 'paypal') {
+                                form.action = "{{ route('paypal.checkout') }}";
+                            } else if (this.value === 'wise') {
+                                form.action = "{{ route('wise.checkout') }}";
+                            } else if (this.value === 'kuickpay') {
+                                form.action = "{{ route('kuickpay.checkout') }}";
+                            }
                         }
                     });
                 });
             </script>
 
+        </div>
+    </div>
+</div>
+
+<!-- Link Bank Modal -->
+<div class="modal fade" id="linkBankModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 15px;">
+            <form method="POST" action="{{ route('bank.store') }}">
+                @csrf
+                <div class="modal-header border-bottom py-3">
+                    <h5 class="modal-title fw-bold">Link Bank Account</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">BANK NAME</label>
+                        <input type="text" name="bank_name" class="form-control" required placeholder="e.g. State Bank of India">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">ACCOUNT HOLDER NAME</label>
+                        <input type="text" name="account_holder_name" class="form-control" required placeholder="Name on account">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">ACCOUNT NUMBER / IBAN</label>
+                        <input type="text" name="account_number" class="form-control" required placeholder="Account Number">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">IFSC / ROUTING / SORT CODE</label>
+                        <input type="text" name="ifsc_code" class="form-control" placeholder="Optional">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">BANK COUNTRY</label>
+                        <input type="text" name="account_type" class="form-control" placeholder="e.g. India, UK">
+                    </div>
+                </div>
+                <div class="modal-footer border-0 p-4 pt-0">
+                    <button type="submit" class="btn btn-primary w-100 py-2 fw-bold shadow-sm">
+                        Link Account
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 </div>

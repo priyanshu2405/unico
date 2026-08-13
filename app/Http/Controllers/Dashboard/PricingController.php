@@ -7,9 +7,31 @@ use App\Models\InventoryVoucher;
 use App\Models\VoucherPriceRule;
 use App\Helpers\CountryHelper;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
 
-class PricingController extends Controller
+class PricingController extends Controller implements HasMiddleware
 {
+    public static function middleware(): array
+    {
+        return [
+            new Middleware(function ($request, $next) {
+                $user = auth()->user();
+                if (!$user->isAdmin() && !$user->can_view_voucher_stock) {
+                    abort(403, 'Unauthorized action.');
+                }
+                
+                $routeAction = $request->route()->getActionMethod();
+                $writeActions = ['create', 'store', 'edit', 'update', 'destroy', 'toggleStatus'];
+                if (in_array($routeAction, $writeActions) && !$user->isAdmin() && !$user->can_edit_voucher_stock) {
+                    abort(403, 'Unauthorized action.');
+                }
+                
+                return $next($request);
+            }),
+        ];
+    }
+
     public function index(Request $request)
     {
         $vouchers = InventoryVoucher::select('id', 'brand_name', 'sku_id')->get();

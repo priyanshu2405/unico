@@ -28,5 +28,12 @@ class AppServiceProvider extends ServiceProvider
         foreach (glob(app_path('Helpers/*.php')) as $file) {
             require_once $file;
         }
+
+        // Bypasses SSL certificate verification locally to prevent cURL error 60
+        if (config('app.env') === 'local' || app()->environment('local') || (!app()->runningInConsole() && in_array(request()->getHost(), ['127.0.0.1', 'localhost']))) {
+            Http::globalOptions([
+                'verify' => false,
+            ]);
+        }
     }
 }

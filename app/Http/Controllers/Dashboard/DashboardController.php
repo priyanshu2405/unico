@@ -269,31 +269,42 @@ class DashboardController extends Controller
     }
 
      public function notifications(Request $request)
-    {
+     {
         $user = auth()->user();
-        // Mark all notifications as read when visiting the notifications page
-        $user->unreadNotifications()->update(['read_at' => now()]);
+        // Mark all notifications as read (except System Alerts) when visiting the notifications page
+        $user->unreadNotifications()
+            ->where('type', '!=', \App\Notifications\SystemAlertNotification::class)
+            ->update(['read_at' => now()]);
         
         // Refresh the unreadNotifications collection so the count in header becomes 0
         $user->load('unreadNotifications');
         
         $perPage = $request->get('per_page', 10);
-        $notifications = $user->notifications()->paginate($perPage)->withQueryString();
+        $notifications = $user->notifications()
+            ->where('type', '!=', \App\Notifications\SystemAlertNotification::class)
+            ->paginate($perPage)
+            ->withQueryString();
         return view('dashboard.notifications.index', compact('notifications'));
-    }
+     }
 
-    public function getUnreadNotificationsCount()
-    {
+     public function getUnreadNotificationsCount()
+     {
         return response()->json([
-            'count' => auth()->user()->unreadNotifications()->count()
+            'count' => auth()->user()
+                ->unreadNotifications()
+                ->where('type', '!=', \App\Notifications\SystemAlertNotification::class)
+                ->count()
         ]);
-    }
+     }
 
-    public function markAllNotificationsAsRead()
-    {
-        auth()->user()->unreadNotifications->markAsRead();
+     public function markAllNotificationsAsRead()
+     {
+        auth()->user()
+            ->unreadNotifications()
+            ->where('type', '!=', \App\Notifications\SystemAlertNotification::class)
+            ->update(['read_at' => now()]);
         return back()->with('success', 'All notifications marked as read.');
-    }
+     }
 
     public function notificationsBulkAction(Request $request)
     {

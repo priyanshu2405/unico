@@ -76,8 +76,8 @@
                         <tr>
                             <td>{{ $loop->iteration + ($purchases->currentPage() - 1) * $purchases->perPage() }}</td>
                             <td><span class="badge bg-primary-soft text-primary fw-bold">{{ $purchase->order_id }}</span></td>
-                            <td>{{ $purchase->created_at->format('d-m-Y') }}</td>
-                            <td>{{ $purchase->created_at->format('H:i:s') }}</td>
+                            <td class="local-date" data-utc="{{ $purchase->created_at->format('Y-m-d\TH:i:s\Z') }}">{{ $purchase->created_at->format('d-m-Y') }}</td>
+                            <td class="local-time" data-utc="{{ $purchase->created_at->format('Y-m-d\TH:i:s\Z') }}">{{ $purchase->created_at->format('H:i:s') }}</td>
                             <td>{{ optional($purchase->inventoryVoucher)->brand_name ?? 'N/A' }}</td>
                             <td>{{ optional($purchase->inventoryVoucher)->currency ?? 'N/A' }}</td>
                             <td>{{ optional($purchase->inventoryVoucher)->country_region ?? 'N/A' }}</td>

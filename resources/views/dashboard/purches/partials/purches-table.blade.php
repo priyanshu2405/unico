@@ -28,8 +28,8 @@
             <tr>
                 <td>{{ $purchases->firstItem() + $index }}</td>
                 <td>{{ $purchase->sku_id }}</td>
-                <td>{{ $purchase->purchase_date ? $purchase->purchase_date->format('Y-m-d') : 'N/A' }}</td>
-                <td>{{ $purchase->created_at->format('H:i:s') }}</td>
+                <td class="local-date" data-utc="{{ $purchase->purchase_date ? $purchase->purchase_date->format('Y-m-d\TH:i:s\Z') : '' }}">{{ $purchase->purchase_date ? $purchase->purchase_date->format('Y-m-d') : 'N/A' }}</td>
+                <td class="local-time" data-utc="{{ $purchase->created_at->format('Y-m-d\TH:i:s\Z') }}">{{ $purchase->created_at->format('H:i:s') }}</td>
                 <td>{{ $purchase->brand_name }}</td>
                 <td>{{ $purchase->currency }}</td>
                 <td>{{ $purchase->country_region }}</td>

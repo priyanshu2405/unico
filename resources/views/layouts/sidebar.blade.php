@@ -322,6 +322,15 @@ $isNotifications = request()->routeIs('notifications.*');
                     <i class="fas fa-headset me-2"></i> Customer Query
                 </a>
             </li>
+            {{-- 
+            @if(auth()->user()->account_type === 'manager' && auth()->user()->can_assign_support_topics)
+            <li class="nav-item">
+                <a class="nav-link {{ request()->routeIs('manager.support.assignments') ? 'active' : '' }}" href="{{ route('manager.support.assignments') }}">
+                    <i class="fas fa-tasks me-2"></i> Support Assignments
+                </a>
+            </li>
+            @endif
+            --}}
             @endif
             @if(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->has_job_permission) )
             <li class="nav-item">
@@ -330,6 +339,14 @@ $isNotifications = request()->routeIs('notifications.*');
                 </a>
             </li>
 
+            @endif
+
+            @if(auth()->user()->isAdmin())
+            <li class="nav-item">
+                <a class="nav-link {{ request()->routeIs('broadcast.index') ? 'active' : '' }}" href="{{ route('broadcast.index') }}">
+                    <i class="fas fa-bullhorn me-2" style="{{ request()->routeIs('broadcast.index') ? 'color: #23AAE2;' : '' }}"></i> Broadcast
+                </a>
+            </li>
             @endif
             @if(auth()->user()->isAgent() || auth()->user()->isStudent() || auth()->user()->isResellerAgent())
             <li class="nav-item">

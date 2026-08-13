@@ -43,16 +43,13 @@
                             <option value="all">All States</option>
                         </select>
                     </div>
-                    <!-- <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">City</label>
-                        <select name="city" id="city" class="form-select">
-                            <option value="">Select City</option>
-                        </select>
-                    </div> -->
                     <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Currency</label>
-                        <input type="text" name="currency" id="currency" class="form-control" value="{{ old('currency', 'PKR') }}" required>
+                        <label class="form-label small fw-bold text-uppercase">City</label>
+                        <select name="city[]" id="city" class="form-select select2-city" multiple>
+                            <option value="all">All Cities</option>
+                        </select>
                     </div>
+
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Voucher Variant</label>
                         <input type="text" name="voucher_variant" id="voucher_variant" class="form-control" value="{{ old('voucher_variant') }}" placeholder="e.g. Subscription">
@@ -101,7 +98,7 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Purchase Value / Unit</label>
-                        <input type="number" step="0.01" name="purchase_value_per_unit" class="form-control" value="{{ old('purchase_value_per_unit', 0) }}" required>
+                        <input type="number" step="0.01" name="purchase_value_per_unit" class="form-control bg-light" value="{{ old('purchase_value_per_unit', 0) }}" readonly required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Taxes</label>
@@ -112,7 +109,7 @@
                         <input type="text" name="bank" class="form-control" value="{{ old('bank') }}">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Local Currency</label>
+                        <label class="form-label small fw-bold text-uppercase">Purchase Currency</label>
                         <input type="text" name="local_currency" class="form-control" value="{{ old('local_currency') }}">
                     </div>
                     <div class="col-md-3">
@@ -127,6 +124,10 @@
                         <hr>
                     </div>
 
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-uppercase text-primary">Sale Currency</label>
+                        <input type="text" name="currency" id="currency" class="form-control border-primary" value="{{ old('currency', 'PKR') }}" required>
+                    </div>
                     <div class="col-md-4">
                         <label class="form-label small fw-bold text-uppercase text-success">Reseller Agent /Agent Sale Price</label>
                         <input type="number" step="0.01" name="agent_sale_price" class="form-control border-success" value="{{ old('agent_sale_price', 0) }}" required>
@@ -186,7 +187,12 @@
         });
 
         $('.select2-state').select2({
-            placeholder: "Select State",
+            placeholder: 'Select State',
+            allowClear: true,
+            closeOnSelect: false
+        });
+        $('.select2-city').select2({
+            placeholder: 'Select City',
             allowClear: true,
             closeOnSelect: false
         });
@@ -336,7 +342,7 @@
         function updateStates(countryCode) {
             const allOption = new Option('All States', 'all', true, true);
             stateSelect.empty().append(allOption);
-            citySelect.html('<option value="">Select City</option>');
+            citySelect.empty().append('<option value="all">All Cities</option>');
             if (countryCode) {
                 const states = State.getStatesOfCountry(countryCode);
                 states.forEach(state => {
@@ -349,7 +355,7 @@
         }
 
         function updateCities(countryCode, stateCode) {
-            citySelect.html('<option value="">Select City</option>');
+            citySelect.html('<option value="all">All Cities</option>');
             if (countryCode && stateCode) {
                 const cities = City.getCitiesOfState(countryCode, stateCode);
                 cities.forEach(city => {
@@ -358,6 +364,7 @@
                     option.textContent = city.name;
                     citySelect.append(option);
                 });
+                citySelect.trigger('change.select2');
             }
         }
 
@@ -377,12 +384,12 @@
             if (!selectedValues || selectedValues.length !== 1 || selectedValues.includes('all')) {
                 // Disable state and city if multiple countries or all countries or no country selected
                 stateSelect.prop('disabled', true).trigger('change.select2');
-                citySelect.disabled = true;
+                citySelect.prop('disabled', true).trigger('change.select2');
                 stateSelect.html('<option value="">State Disabled (Multi/All)</option>');
-                citySelect.innerHTML = '<option value="">City Disabled (Multi/All)</option>';
+                citySelect.html('<option value="">City Disabled (Multi/All)</option>');
             } else {
                 stateSelect.prop('disabled', false).trigger('change.select2');
-                citySelect.disabled = false;
+                citySelect.prop('disabled', false).trigger('change.select2');
                 const countryCode = $(this).find('option:selected').data('code');
                 updateStates(countryCode);
             }
@@ -406,14 +413,26 @@
 
             if (!selectedStates || selectedStates.length !== 1 || selectedStates.includes('all')) {
                 // Disable city if multiple states or all states or no state selected
-                citySelect.disabled = true;
-                citySelect.innerHTML = '<option value="">City Disabled (Multi/All)</option>';
+                citySelect.prop('disabled', true).trigger('change.select2');
+                citySelect.html('<option value="">City Disabled (Multi/All)</option>');
             } else {
-                citySelect.disabled = false;
+                citySelect.prop('disabled', false).trigger('change.select2');
                 const stateOption = $(this).find('option:selected')[0];
                 const stateCode = stateOption ? stateOption.dataset.code : null;
                 if (countryCode && stateCode) {
                     updateCities(countryCode, stateCode);
+                }
+            }
+        });
+        
+        // City Change Event
+        citySelect.on('change', function() {
+            const selectedCities = $(this).val();
+            // Handle All Cities logic
+            if (selectedCities && selectedCities.includes('all')) {
+                if (selectedCities.length > 1) {
+                    $(this).val(['all']).trigger('change.select2');
+                    return;
                 }
             }
         });

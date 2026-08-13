@@ -30,4 +30,10 @@ class RefundRequest extends Model
     {
         return $this->belongsTo(Order::class, 'order_id', 'order_id');
     }
+
+    public function messages()
+    {
+        return $this->hasMany(RefundChatMessage::class, 'refund_request_id');
+    }
 }
+

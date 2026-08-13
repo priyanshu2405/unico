@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Dashboard\DisputeController;
 use App\Http\Controllers\Dashboard\RefundController;
+use App\Http\Controllers\Dashboard\RefundChatController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\Dashboard\DashboardController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Dashboard\OrderController;
 use App\Http\Controllers\Dashboard\WalletController;
 use App\Http\Controllers\Dashboard\ComplianceController;
 use App\Http\Controllers\Dashboard\SystemController;
+use App\Http\Controllers\Dashboard\BroadcastController;
 use App\Http\Controllers\Dashboard\ReportController;
 use App\Http\Controllers\Dashboard\SettingsController;
 use App\Http\Controllers\Dashboard\AgentController;
@@ -160,6 +162,17 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::get('/notifications/unread-count', [DashboardController::class, 'getUnreadNotificationsCount'])->name('notifications.unreadCount');
     Route::post('/notifications/mark-all-read', [DashboardController::class, 'markAllNotificationsAsRead'])->name('notifications.markAllRead');
     Route::post('/notifications/bulk-action', [DashboardController::class, 'notificationsBulkAction'])->name('notifications.bulkAction');
+
+    // Broadcast Routes
+    Route::get('/broadcast', [BroadcastController::class, 'showBroadcastForm'])->name('broadcast.index');
+    Route::post('/broadcast/send', [BroadcastController::class, 'sendBroadcast'])->name('broadcast.send');
+
+    // Alerts Routes
+    Route::get('/alerts', [BroadcastController::class, 'alertsIndex'])->name('alerts.index');
+    Route::get('/alerts/unread-count', [BroadcastController::class, 'getUnreadAlertsCount'])->name('alerts.unreadCount');
+    Route::post('/alerts/mark-all-read', [BroadcastController::class, 'markAllAlertsAsRead'])->name('alerts.markAllRead');
+    Route::post('/alerts/bulk-action', [BroadcastController::class, 'alertsBulkAction'])->name('alerts.bulkAction');
+
     Route::get('/trend-data', [DashboardController::class, 'getTrendData'])->name('dashboard.trendData');
     Route::get('/my-profile', [UserController::class, 'profile'])->name('profile.index');
     Route::post('/my-profile/update', [UserController::class, 'updateProfile'])->name('profile.update');
@@ -198,6 +211,7 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::post('/users/{user}/impersonate', [UserController::class, 'impersonate'])->name('users.impersonate');
     Route::get('/stop-impersonating', [UserController::class, 'stopImpersonating'])->name('users.stop-impersonating');
     Route::get('/users-download-pdf', [UserController::class, 'downloadPDF'])->name('users.pdf');
+    Route::get('/users-export-source', [UserController::class, 'exportCustomerSource'])->name('users.export.source');
 
     Route::post('/users/{user}/category', [UserController::class, 'updateCategory'])->name('users.category.update');
     Route::post('/users/{user}/limit', [UserController::class, 'updateLimit'])->name('users.limit.update');
@@ -267,7 +281,7 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
 
 
     // Refund Management
-    Route::middleware(['account_type:admin,manager'])->group(function () {
+    Route::middleware(['account_type:admin,manager,support_team'])->group(function () {
         Route::get('/refunds', [RefundController::class, 'index'])->name('refunds.index');
         Route::get('/refunds/admin-export', [RefundController::class, 'adminExport'])->name('refunds.admin_export');
         Route::post('/refunds/{id}/approve', [RefundController::class, 'approve'])->name('refunds.approve');
@@ -345,7 +359,7 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::get('/banks', [BankController::class, 'bankreport'])->name('banks.bank-table');
     Route::get('/banks-export', [BankController::class, 'exportBankReport'])->name('banks.bank-table.export');
     Route::post('/webhook/save', [WebhookController::class, 'save'])->name('webhook.save');
-    Route::post('/stripe/webhook', [App\Http\Controllers\StripeWebhookController::class, 'handleWebhook']);
+    // Route::post('/stripe/webhook', [App\Http\Controllers\StripeWebhookController::class, 'handleWebhook']);
     // Admin Payment Methods
     Route::get('/payment-methods', [BankController::class, 'index'])->name('payment-methods.index');
     Route::post('/payment-methods', [BankController::class, 'store'])->name('payment-methods.store');
@@ -360,6 +374,7 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::middleware(['account_type:admin,manager,support_team'])->group(function () {
         Route::get('/customer-query', [CustomerController::class, 'CustomerQuery'])->name('customer.query');
         Route::post('/customer-query/{id}/resolve', [CustomerController::class, 'resolveQuery'])->name('customer.query.resolve');
+        Route::post('/customer-query/{id}/escalate', [CustomerController::class, 'escalateQuery'])->name('customer.query.escalate');
         Route::post('/support-options', [CustomerController::class, 'storeSupportOption'])->name('support.options.store');
         Route::delete('/support-options/{id}', [CustomerController::class, 'deleteSupportOption'])->name('support.options.destroy');
     });
@@ -383,6 +398,13 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::post('/disputes/{id}/status', [DisputeController::class, 'updateStatus'])->name('disputes.status');
     Route::post('/disputes/{id}/transfer', [DisputeController::class, 'transfer'])->name('disputes.transfer');
     Route::post('/disputes/{id}/feedback', [DisputeController::class, 'submitFeedback'])->name('disputes.feedback');
+
+    // Refund Chat Management
+    Route::get('/refunds/{id}/chat', [RefundChatController::class, 'show'])->name('refunds.chat');
+    Route::post('/refunds/{id}/chat/send', [RefundChatController::class, 'sendMessage'])->name('refunds.chat.send');
+    Route::get('/refunds/{id}/chat/fetch', [RefundChatController::class, 'fetchMessages'])->name('refunds.chat.fetch');
+    Route::post('/refunds/{id}/chat/typing', [RefundChatController::class, 'updateTyping'])->name('refunds.chat.typing');
+
 
 
     // Agent Specific
@@ -410,6 +432,10 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
 
         Route::get('/system/stop', [ManagerController::class, 'stopSystem'])->name('system.stop');
         Route::get('/reports', [ManagerController::class, 'reports'])->name('reports');
+        
+        Route::get('/support-assignments', [App\Http\Controllers\Dashboard\ManagerSupportController::class, 'index'])->name('manager.support.assignments');
+        Route::post('/support-assignments', [App\Http\Controllers\Dashboard\ManagerSupportController::class, 'store'])->name('manager.support.assignments.store');
+        Route::delete('/support-assignments/{id}', [App\Http\Controllers\Dashboard\ManagerSupportController::class, 'destroy'])->name('manager.support.assignments.destroy');
     });
 
     // Student Specific

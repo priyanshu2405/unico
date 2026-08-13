@@ -6,9 +6,12 @@
                 <th>Sale ID</th>
                 <th>Date</th>
                 <th>Time</th>
+                <th>Buyer ID</th>
+                <th>Buyer Name</th>
                 <th>Buyer Type</th>
                 <th>Local currency</th>
                 <th>Country/Region</th>
+                <th>City</th>
                 <th>Voucher Variant</th>
                 <th>Voucher Type</th>
                 <th>Sales Invoice No.</th>
@@ -31,6 +34,8 @@
                 <td class="fw-bold">{{ $sale->order_id }}</td>
                 <td>{{ $sale->created_at->format('d M Y') }}</td>
                 <td>{{ $sale->created_at->format('H:i A') }}</td>
+                <td class="font-monospace text-muted">{{ $sale->user->user_id ?? 'N/A' }}</td>
+                <td>{{ trim(($sale->user->first_name ?? '') . ' ' . ($sale->user->last_name ?? '')) ?: 'N/A' }}</td>
                 <td>
                     <span class="badge rounded-pill bg-light text-dark border px-3">
                         {{ ucfirst(str_replace('_', ' ', $sale->user_role)) }}
@@ -44,6 +49,7 @@
                         {{ $sale->inventoryVoucher->country_region ?? 'N/A' }}
                     @endif
                 </td>
+                <td>{{ optional($sale->inventoryVoucher)->city ? (is_array($sale->inventoryVoucher->city) ? implode(', ', $sale->inventoryVoucher->city) : $sale->inventoryVoucher->city) : 'N/A' }}</td>
                 <td>{{ $sale->inventoryVoucher->voucher_variant ?? 'N/A' }}</td>
                 <td>{{ $sale->voucher_type }}</td>
                 <td>{{ $sale->order_id }}</td> {{-- Using Order ID as Invoice No --}}
@@ -64,7 +70,7 @@
                     @endphp
                     {{ $currencyCode }} {{ number_format($unitValue, 2) }}
                 </td>
-                <td>{{ $sale->inventoryVoucher->taxes ?? 'N/A' }} </td>
+                <td>{{ number_format($sale->tax_amount ?? 0, 2) }}</td>
                 <td>{{ $sale->bank_name}}</td>
                 <td>{{ number_format($sale->inventoryVoucher->currency_conversion_rate ?? 0, 4) }}</td>
                 <td>
@@ -85,7 +91,7 @@
             </tr>
             @empty
             <tr>
-                <td colspan="17" class="text-center py-5 text-muted">No sales found.</td>
+                <td colspan="21" class="text-center py-5 text-muted">No sales found.</td>
             </tr>
             @endforelse
         </tbody>

@@ -6,9 +6,31 @@ use App\Http\Controllers\Controller;
 use App\Models\InventoryVoucher;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Routing\Controllers\HasMiddleware;
+use Illuminate\Routing\Controllers\Middleware;
 
-class InventoryController extends Controller
+class InventoryController extends Controller implements HasMiddleware
 {
+    public static function middleware(): array
+    {
+        return [
+            new Middleware(function ($request, $next) {
+                $user = auth()->user();
+                if (!$user->isAdmin() && !$user->can_view_voucher_stock) {
+                    abort(403, 'Unauthorized action.');
+                }
+                
+                $routeAction = $request->route()->getActionMethod();
+                $writeActions = ['create', 'store', 'edit', 'update', 'destroy', 'duplicate', 'bulkDuplicate', 'import', 'upload'];
+                if (in_array($routeAction, $writeActions) && !$user->isAdmin() && !$user->can_edit_voucher_stock) {
+                    abort(403, 'Unauthorized action.');
+                }
+                
+                return $next($request);
+            }),
+        ];
+    }
+
     public function index(Request $request)
     {
         $query = InventoryVoucher::query();
@@ -124,6 +146,10 @@ class InventoryController extends Controller
         }
 
         $new->sku_id = $newSku;
+        $new->upload_vouchers = null;
+        $new->delivered_vouchers = null;
+        $new->opening_stock_qty = 0;
+        $new->purchased_qty = 0;
         $new->quantity = 0; // Reset quantity for duplicate
         $new->status = 'OUT OF STOCK';
         $new->save();
@@ -156,6 +182,10 @@ class InventoryController extends Controller
                 }
 
                 $new->sku_id = $newSku;
+                $new->upload_vouchers = null;
+                $new->delivered_vouchers = null;
+                $new->opening_stock_qty = 0;
+                $new->purchased_qty = 0;
                 $new->quantity = 0;
                 $new->status = 'OUT OF STOCK';
                 $new->save();
@@ -173,7 +203,7 @@ class InventoryController extends Controller
             'brand_name' => 'required|string|max:255',
             'country_region' => 'required|array',
             'state' => 'nullable|array',
-            'city' => 'nullable|string|max:255',
+            'city' => 'nullable|array',
             'currency' => 'required|string|max:10',
             'voucher_variant' => 'nullable|string|max:255',
             'voucher_type' => 'required|string|max:255',
@@ -197,6 +227,9 @@ class InventoryController extends Controller
             'student_bonus_points_per_unit' => 'nullable|integer|min:0',
             'upload_vouchers' => 'nullable|string',
             'logo' => 'nullable|image|max:2048',
+            'instructions' => 'nullable|string',
+            'email' => 'nullable|email|max:255',
+            'mobile_no' => 'nullable|string|max:50',
         ]);
 
        if ($request->hasFile('logo')) {
@@ -237,7 +270,7 @@ class InventoryController extends Controller
             'brand_name' => 'required|string|max:255',
             'country_region' => 'required|array',
             'state' => 'nullable|array',
-            'city' => 'nullable|string|max:255',
+            'city' => 'nullable|array',
             'currency' => 'required|string|max:10',
             'voucher_variant' => 'nullable|string|max:255',
             'voucher_type' => 'required|string|max:255',
@@ -261,12 +294,16 @@ class InventoryController extends Controller
             'student_bonus_points_per_unit' => 'nullable|integer|min:0',
             'upload_vouchers' => 'nullable|string',
             'logo' => 'nullable|image|max:2048',
+            'instructions' => 'nullable|string',
+            'email' => 'nullable|email|max:255',
+            'mobile_no' => 'nullable|string|max:50',
         ];
 
         $request->validate($rules);
 
         $validated = $request->except(['upload_vouchers', 'quantity', 'logo']);
         $validated['state'] = $request->input('state', []);
+        $validated['city'] = $request->input('city', []);
 
  if ($request->hasFile('logo')) {
             // Delete old logo if exists
@@ -276,6 +313,7 @@ class InventoryController extends Controller
             $validated['logo'] = $request->file('logo')->store('inventory_logos', 'public');
         }
 
+        $allCodes = $inventory->upload_vouchers ?: [];
         if ($request->filled('upload_vouchers')) {
             $newCodesString = $request->upload_vouchers;
             // Support both comma and newline as separator for convenience
@@ -283,22 +321,22 @@ class InventoryController extends Controller
             $newCodes = array_filter($newCodes); // Remove empty values
 
             $existingCodes = $inventory->upload_vouchers ?: [];
-            $allCodes = array_unique(array_merge($existingCodes, $newCodes));
-            $validated['upload_vouchers'] = array_values($allCodes);
-
-            // Quantity should be all codes minus delivered codes
-            $deliveredCodes = $inventory->delivered_vouchers ?: [];
-            $remainingCodes = array_diff($allCodes, $deliveredCodes);
-
-            $pendingOrdersQty = \App\Models\Order::where('voucher_id', $inventory->sku_id)
-                ->whereIn('status', ['pending', 'completed'])
-                ->sum('quantity');
-
-            $validated['quantity'] = max(0, count($remainingCodes) - $pendingOrdersQty);
+            $allCodes = array_values(array_unique(array_merge($existingCodes, $newCodes)));
+            $validated['upload_vouchers'] = $allCodes;
 
             // Update purchased_qty: It's basically all unique codes ever added
             $validated['purchased_qty'] = count($allCodes);
         }
+
+        // Always update the quantity column to match remaining codes minus pending orders
+        $deliveredCodes = $inventory->delivered_vouchers ?: [];
+        $remainingCodes = array_diff($allCodes, $deliveredCodes);
+
+        $pendingOrdersQty = \App\Models\Order::where('voucher_id', $inventory->sku_id)
+            ->whereIn('status', ['pending', 'completed'])
+            ->sum('quantity');
+
+        $validated['quantity'] = max(0, count($remainingCodes) - $pendingOrdersQty);
 
         if (isset($validated['expiry_date']) && $validated['expiry_date'] && \Carbon\Carbon::parse($validated['expiry_date'])->isPast()) {
             $validated['is_expired'] = true;

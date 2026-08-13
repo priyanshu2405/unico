@@ -33,6 +33,7 @@ class InventoryVoucher extends Model
         'brand_name',
         'country_region',
         'state',
+        'city',
         'currency',
         'voucher_variant',
         'voucher_type',
@@ -59,6 +60,9 @@ class InventoryVoucher extends Model
 
 
         'upload_vouchers',
+        'instructions',
+        'email',
+        'mobile_no',
         'delivered_vouchers',
         'opening_stock_qty',
         'purchased_qty',
@@ -84,7 +88,8 @@ class InventoryVoucher extends Model
         'student_bonus_points_per_unit' => 'integer',
         'student_sale_price' => 'decimal:2',
         'country_region' => 'array',
-           'state' => 'array',
+        'state' => 'array',
+        'city' => 'array',
         'upload_vouchers' => 'array',
         'delivered_vouchers' => 'array',
     ];

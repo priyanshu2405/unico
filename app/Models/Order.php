@@ -14,6 +14,7 @@ class Order extends Model
         'voucher_id',
         'quantity',
         'amount',
+        'tax_amount',
         'status',
         'user_role',
         'referral_points',

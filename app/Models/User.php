@@ -115,7 +115,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'can_view_voucher_stock',
         'can_edit_voucher_stock',
         'can_view_reports_page',
+        'can_process_refunds',
          'can_view_all_countries',
+        'can_assign_support_topics',
         'permitted_countries',
         'category',
         'rating',
@@ -169,7 +171,9 @@ class User extends Authenticatable implements MustVerifyEmail
             'can_view_voucher_stock' => 'boolean',
             'can_edit_voucher_stock' => 'boolean',
             'can_view_reports_page' => 'boolean',
+            'can_process_refunds' => 'boolean',
              'can_view_all_countries' => 'boolean',
+            'can_assign_support_topics' => 'boolean',
             'permitted_countries' => 'array',
         ];
     }
@@ -560,7 +564,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
         \Illuminate\Support\Facades\Mail::to($this->email)->send(new \App\Mail\VerifyEmail($this, $verificationUrl));
     }
-     public function sendPasswordResetNotification($token)
+    public function sendPasswordResetNotification($token)
     {
         $url = route('password.reset', [
             'token' => $token,
@@ -570,4 +574,8 @@ class User extends Authenticatable implements MustVerifyEmail
         \Illuminate\Support\Facades\Mail::to($this->email)->send(new \App\Mail\ResetPassword($this, $url));
     }
     
+    public function supportAssignments()
+    {
+        return $this->hasMany(SupportAssignment::class, 'support_user_id');
+    }
 }

@@ -15,14 +15,14 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_users))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users)) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
 
         $query = User::with('riskLevel');
 
-        if (auth()->user()->account_type === 'manager') {
-            $query->whereNotIn('account_type', ['admin', 'manager']);
+        if (!auth()->user()->isAdmin()) {
+            $query->whereNotIn('account_type', ['admin', 'manager', 'support_team']);
         } else {
             // For Admin and others, exclude admins to match "admin ko chhod kar"
             $query->where('account_type', '!=', 'admin');
@@ -99,7 +99,7 @@ class UserController extends Controller
 
     public function create()
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_create_user) || auth()->user()->account_type === 'reseller_agent')) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_create_user || auth()->user()->account_type === 'reseller_agent')) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
         return view('dashboard.users.create');
@@ -107,7 +107,7 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_create_user) || auth()->user()->account_type === 'reseller_agent')) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_create_user || auth()->user()->account_type === 'reseller_agent')) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
 
@@ -135,6 +135,15 @@ class UserController extends Controller
             'city' => 'nullable|string|max:255',
         ]);
 
+        $countryIso = null;
+        if ($request->filled('country')) {
+            $countries = \App\Helpers\CountryHelper::getAllCountries();
+            $countryIso = array_search($request->country, $countries);
+            if ($countryIso === false) {
+                $countryIso = null;
+            }
+        }
+
         $userData = [
             'user_id' => User::generateNextUserId($request->account_type),
             'first_name' => $request->first_name,
@@ -144,6 +153,7 @@ class UserController extends Controller
             'account_type' => $request->account_type,
             'phone' => $request->phone,
             'country' => $request->country,
+            'country_iso' => $countryIso,
             'state' => $request->state,
             'city' => $request->city,
             'profile_verification_status' => 'verified',
@@ -194,7 +204,7 @@ class UserController extends Controller
 
     public function show(User $user)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_users) || (auth()->user()->isResellerAgent() && $user->sub_agent_id === auth()->id()))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users || (auth()->user()->isResellerAgent() && $user->sub_agent_id === auth()->id()))) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
         return view('dashboard.users.show', compact('user'));
@@ -202,7 +212,7 @@ class UserController extends Controller
 
     public function edit(User $user)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_edit_user) || (auth()->user()->isResellerAgent() && $user->sub_agent_id === auth()->id()))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_edit_user || (auth()->user()->isResellerAgent() && $user->sub_agent_id === auth()->id()))) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
         return view('dashboard.users.edit', compact('user'));
@@ -210,7 +220,7 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_edit_user) || (auth()->user()->isResellerAgent() && $user->sub_agent_id === auth()->id()))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_edit_user || (auth()->user()->isResellerAgent() && $user->sub_agent_id === auth()->id()))) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
 
@@ -273,6 +283,16 @@ class UserController extends Controller
             $data['preferred_countries'] = $request->preferred_countries;
         }
 
+        if ($request->has('country')) {
+            if (empty($request->country)) {
+                $data['country_iso'] = null;
+            } else {
+                $countries = \App\Helpers\CountryHelper::getAllCountries();
+                $countryIso = array_search($request->country, $countries);
+                $data['country_iso'] = ($countryIso !== false) ? $countryIso : null;
+            }
+        }
+
         // Sync primary_contact and phone
         if ($request->has('phone') && !empty($request->phone)) {
             $data['primary_contact'] = $request->phone;
@@ -324,12 +344,12 @@ class UserController extends Controller
     {
         $user = User::findOrFail($id);
 
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_freeze_user))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_freeze_user)) {
             return response()->json(['status' => 'error', 'message' => 'Unauthorized action.'], 403);
         }
 
-        if (auth()->user()->account_type === 'manager' && in_array($user->account_type, ['admin', 'manager'])) {
-            return response()->json(['status' => 'error', 'message' => 'You cannot freeze admin or manager accounts.'], 403);
+        if (!auth()->user()->isAdmin() && in_array($user->account_type, ['admin', 'manager', 'support_team'])) {
+            return response()->json(['status' => 'error', 'message' => 'You cannot freeze administrative accounts.'], 403);
         }
 
         if ($user->id === auth()->id()) {
@@ -358,12 +378,12 @@ class UserController extends Controller
 
     public function suspend(User $user)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_freeze_user))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_freeze_user)) {
             return back()->with('error', 'Unauthorized action.');
         }
 
-        if (auth()->user()->account_type === 'manager' && in_array($user->account_type, ['admin', 'manager'])) {
-            return back()->with('error', 'You cannot suspend admin or manager accounts.');
+        if (!auth()->user()->isAdmin() && in_array($user->account_type, ['admin', 'manager', 'support_team'])) {
+            return back()->with('error', 'You cannot suspend administrative accounts.');
         }
 
         $newStatus = $user->profile_verification_status === 'suspended' ? 'verified' : 'suspended';
@@ -380,7 +400,7 @@ class UserController extends Controller
 
     public function updatePassword(Request $request, User $user)
     {
-        if (auth()->user()->account_type === 'manager' && !auth()->user()->can_reset_password) {
+        if (!auth()->user()->isAdmin() && !auth()->user()->can_reset_password) {
             return back()->with('error', 'Unauthorized action.');
         }
 
@@ -397,7 +417,7 @@ class UserController extends Controller
 
     public function updatePermissions(Request $request, User $user)
     {
-        // Only admin can update manager permissions
+        // Only admin can update permissions
         if (auth()->user()->account_type !== 'admin') {
             return back()->with('error', 'Unauthorized action.');
         }
@@ -423,7 +443,9 @@ class UserController extends Controller
             'can_view_voucher_stock' => $request->has('can_view_voucher_stock'),
             'can_edit_voucher_stock' => $request->has('can_edit_voucher_stock'),
             'can_view_reports_page' => $request->has('can_view_reports_page'),
+            'can_process_refunds' => $request->has('can_process_refunds'),
              'can_view_all_countries' => $request->has('can_view_all_countries'),
+            'can_assign_support_topics' => $request->has('can_assign_support_topics'),
             'permitted_countries' => $request->input('permitted_countries', []),
         ]);
 
@@ -432,7 +454,7 @@ class UserController extends Controller
 
     public function updateCategory(Request $request, User $user)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_edit_user))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_edit_user)) {
             return response()->json(['error' => 'Unauthorized action.'], 403);
         }
 
@@ -449,7 +471,7 @@ class UserController extends Controller
 
     public function updateLimit(Request $request, User $user)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_edit_user))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_edit_user)) {
             return response()->json(['error' => 'Unauthorized action.'], 403);
         }
 
@@ -466,14 +488,14 @@ class UserController extends Controller
 
     public function downloadPDF(Request $request)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_users))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users)) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
 
         $query = User::where('id', '!=', auth()->id());
 
-        if (auth()->user()->isManager()) {
-            $query->whereNotIn('account_type', ['admin', 'manager']);
+        if (!auth()->user()->isAdmin()) {
+            $query->whereNotIn('account_type', ['admin', 'manager', 'support_team']);
         }
 
         if ($request->has('role') && $request->role != 'all' && $request->role != '') {
@@ -528,16 +550,102 @@ class UserController extends Controller
                 $user->first_name . ' ' . $user->last_name,
                 $user->email,
                 ucwords(str_replace('_', ' ', $user->account_type)),
-                $user->phone,
+                "\t" . $user->phone,
                 $user->country,
                 $user->is_active ? 'Active' : 'Frozen',
                 ucfirst($user->profile_verification_status),
-                $user->created_at->format('Y-m-d H:i:s')
+                $user->created_at->format('d M Y')
             ]);
         }
 
         fclose($handle);
         exit;
+    }
+
+    public function exportCustomerSource(Request $request)
+    {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users)) {
+            return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
+        }
+
+        $query = User::where('id', '!=', auth()->id());
+
+        if (!auth()->user()->isAdmin()) {
+            $query->whereNotIn('account_type', ['admin', 'manager', 'support_team']);
+        }
+
+        $users = $query->latest()->get();
+        $filename = "Customers_Detail_Report_" . date('Y-m-d_H-i-s') . ".csv";
+
+        $headers = [
+            "Content-type"        => "text/csv",
+            "Content-Disposition" => "attachment; filename=$filename",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Expires"             => "0"
+        ];
+
+        $columns = [
+            'User ID', 'Account Type', 'Name', 'First Name', 'Last Name', 'Email', 'Phone', 
+            'Country ISO', 'Country', 'State', 'City', 'Zip Code', 'Address', 'DOB', 
+            'ID Type', 'ID Number', 'Primary Contact', 'WhatsApp Number', 
+            'Business Name', 'Business Type', 'Registration Number', 'Business Contact', 
+            'Business Email', 'Website', 'Representative Name', 'Designation',
+            'Exam Purpose', 'Highest Education', 'Passing Year', 'Preferred Countries',
+            'Bank Name', 'Bank Country', 'Account Number', 'Status', 'Verification', 'Registered Date'
+        ];
+
+        $callback = function() use($users, $columns) {
+            $file = fopen('php://output', 'w');
+            fputcsv($file, $columns);
+
+            foreach ($users as $user) {
+                $row = [
+                    $user->user_id,
+                    ucwords(str_replace('_', ' ', $user->account_type)),
+                    $user->name,
+                    $user->first_name,
+                    $user->last_name,
+                    $user->email,
+                    "\t" . $user->phone,
+                    $user->country_iso,
+                    $user->country,
+                    $user->state,
+                    $user->city,
+                    $user->zip_code,
+                    $user->address,
+                    $user->dob,
+                    $user->id_type,
+                    $user->id_number,
+                    $user->primary_contact,
+                    "\t" . $user->whatsapp_number,
+                    $user->business_name,
+                    $user->business_type,
+                    $user->registration_number,
+                    "\t" . $user->business_contact,
+                    $user->business_email,
+                    $user->website,
+                    $user->representative_name,
+                    $user->designation,
+                    $user->exam_purpose,
+                    $user->highest_education,
+                    $user->passing_year,
+                    is_array($user->preferred_countries) ? implode(', ', $user->preferred_countries) : $user->preferred_countries,
+                    $user->bank_name,
+                    $user->bank_country,
+                    $user->account_number,
+                    $user->is_active ? 'Active' : 'Frozen',
+                    ucfirst($user->profile_verification_status),
+                    $user->created_at ? $user->created_at->format('Y-m-d H:i:s') : 'N/A',
+                ];
+
+                fputcsv($file, $row);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
     public function profile()
     {
@@ -604,6 +712,16 @@ class UserController extends Controller
             $data['preferred_countries'] = $request->preferred_countries;
         }
 
+        if ($request->has('country')) {
+            if (empty($request->country)) {
+                $data['country_iso'] = null;
+            } else {
+                $countries = \App\Helpers\CountryHelper::getAllCountries();
+                $countryIso = array_search($request->country, $countries);
+                $data['country_iso'] = ($countryIso !== false) ? $countryIso : null;
+            }
+        }
+
         // Handle File Uploads
         $fileFields = ['profile_photo', 'id_doc', 'id_doc_final', 'registration_doc', 'id_document', 'photograph', 'reference_letter'];
         foreach ($fileFields as $field) {
@@ -625,7 +743,7 @@ class UserController extends Controller
 
     public function managers(Request $request)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_users))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users)) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
 
@@ -831,9 +949,7 @@ class UserController extends Controller
 
     public function ResellerAgent(Request $request)
     {
-        if (!(auth()->user()->isAdmin() ||
-        (auth()->user()->isSupport() && auth()->user()->can_view_users) || 
-        (auth()->user()->isManager() && auth()->user()->can_view_users))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users)) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
         $query = User::where('account_type', 'reseller_agent');
@@ -894,7 +1010,7 @@ class UserController extends Controller
 
     public function SupportTeam(Request $request)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_users))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users)) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
         $query = User::where('account_type', 'support_team');
@@ -955,7 +1071,7 @@ class UserController extends Controller
 
     public function RegularAgent(Request $request)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_users) || (auth()->user()->isSupport() && auth()->user()->can_view_users) ||  auth()->user()->isResellerAgent())) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users || auth()->user()->isResellerAgent())) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
         $query = User::where('account_type', 'agent');
@@ -1020,8 +1136,7 @@ class UserController extends Controller
 
     public function Student(Request $request)
     {
-        if (!(auth()->user()->isAdmin() ||
-        (auth()->user()->isSupport() && auth()->user()->can_view_users) || (auth()->user()->isManager() && auth()->user()->can_view_users) || auth()->user()->isResellerAgent())) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_view_users || auth()->user()->isResellerAgent())) {
             return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
         }
         $query = User::where('account_type', 'student');
@@ -1103,9 +1218,9 @@ class UserController extends Controller
         return view('dashboard.pages.student', compact('users'));
     }
     
-        public function bulkVerify(Request $request)
+    public function bulkVerify(Request $request)
     {
-        if (!(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_approve_user))) {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_approve_user)) {
             return response()->json(['error' => 'Unauthorized action.'], 403);
         }
 
@@ -1135,13 +1250,12 @@ class UserController extends Controller
 
     public function impersonate(User $user)
     {
-        // Only admin/manager can impersonate
-        if (auth()->user()->account_type === 'manager') {
-            if (!auth()->user()->can_impersonate_user) {
-                return back()->with('error', 'Unauthorized action.');
-            }
-        } elseif (auth()->user()->account_type !== 'admin') {
+        if (!(auth()->user()->isAdmin() || auth()->user()->can_impersonate_user)) {
             return back()->with('error', 'Unauthorized action.');
+        }
+
+        if (!auth()->user()->isAdmin() && in_array($user->account_type, ['admin', 'manager', 'support_team'])) {
+            return back()->with('error', 'You cannot impersonate administrative accounts.');
         }
 
         if ($user->id === auth()->id()) {

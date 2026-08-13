@@ -20,11 +20,11 @@ class ReportController extends Controller
             'total_sales' => Order::where('status', 'delivered')->sum('amount') ?? 0,
             'total_orders' => Order::count(),
             'pending_orders' => Order::where('status', 'pending')->count(),
-            'total_vouchers' => Vouchar::count(),
+            'total_vouchers' => InventoryVoucher::count(),
             'total_users' => User::count(),
         ];
 
-        $recent_orders = Order::with(['user', 'voucher'])->latest()->limit(5)->get();
+        $recent_orders = Order::with(['user', 'inventoryVoucher'])->latest()->limit(5)->get();
 
         return view('dashboard.reports.index', compact('stats', 'recent_orders'));
     }
@@ -46,20 +46,23 @@ class ReportController extends Controller
             $query->whereJsonContains('country_region', $request->country_region);
         }
 
+        if ($request->filled('city')) {
+            $query->whereJsonContains('city', $request->city);
+        }
+
         // Date range handling
         $startDate = null;
         $endDate = null;
-        $hasDateFilter = $request->filled('period_type') || $request->filled('filter_date');
+        $hasDateFilter = $request->filled('date_range');
 
         if ($hasDateFilter) {
-            $baseDate = $request->filled('filter_date') ? Carbon::parse($request->filter_date) : now();
-            if ($request->period_type == 'weekly') {
-                $startDate = $baseDate->copy()->startOfWeek(Carbon::MONDAY);
-                $endDate = $baseDate->copy()->endOfWeek(Carbon::SUNDAY);
+            $dates = explode(' to ', $request->date_range);
+            if (count($dates) == 2) {
+                $startDate = Carbon::parse($dates[0])->startOfDay();
+                $endDate = Carbon::parse($dates[1])->endOfDay();
             } else {
-                // Default to monthly if filtered but no type or explicit monthly
-                $startDate = $baseDate->copy()->startOfMonth();
-                $endDate = $baseDate->copy()->endOfMonth();
+                $startDate = Carbon::parse($dates[0])->startOfDay();
+                $endDate = Carbon::parse($dates[0])->endOfDay();
             }
         }
 
@@ -78,31 +81,38 @@ class ReportController extends Controller
                     ->where('status', 'delivered')
                     ->where('created_at', '<', $startDate)
                     ->sum('quantity');
-                $opening_qty = max(0, $purchasedBefore - $soldBefore);
+                $lostBefore = (int) Order::whereIn('order_id', RefundRequest::whereIn('status', ['approved', 'pending'])->where('created_at', '<', $startDate)->pluck('order_id'))
+                    ->where('voucher_id', $item->sku_id)
+                    ->sum('quantity');
+                $opening_qty = max(0, $purchasedBefore - $soldBefore - $lostBefore);
             }
             $item->opening_qty = $opening_qty;
             $item->opening_value = $opening_qty * $unit_cost;
             $item->opening_taxes = $opening_qty * $unit_taxes;
 
-            // 2. Purchases (Additions) - Always show total initial purchase
+            // 2. Purchases (Additions)
             $purchase_qty = (int)$item->purchased_qty;
+            if ($hasDateFilter && $startDate) {
+                $purchaseInPeriod = ($item->purchase_date && Carbon::parse($item->purchase_date)->between($startDate, $endDate)) ? (int)$item->purchased_qty : 0;
+                $purchase_qty = $purchaseInPeriod;
+            }
             $item->purchase_qty = $purchase_qty;
             $item->purchase_value_calc = $purchase_qty * $unit_cost;
             $item->purchase_taxes = $purchase_qty * $unit_taxes;
 
-            // 3. Sold (Delivered) in this period
+            // 3. Stock Available
+            $item->in_stock_qty = $opening_qty + $purchase_qty;
+            $item->in_stock_value = $item->in_stock_qty * $unit_cost;
+            $item->in_stock_taxes = $item->in_stock_qty * $unit_taxes;
+
+            // 4. Sold (Delivered) in this period
             $soldQuery = Order::where('voucher_id', $item->sku_id)->where('status', 'delivered');
             if ($startDate && $endDate) {
                 $soldQuery->whereBetween('created_at', [$startDate, $endDate]);
             }
             $item->sold_qty = (int) $soldQuery->sum('quantity');
-            $item->sold_value = $soldQuery->sum('amount');
-            $item->sold_taxes = $item->sold_qty * $unit_taxes;
-
-            // 4. Stock Available (Current real-time balance)
-            $item->in_stock_qty = $item->quantity;
-            $item->in_stock_value = $item->in_stock_qty * $unit_cost;
-            $item->in_stock_taxes = $item->in_stock_qty * $unit_taxes;
+            $item->sold_value = $item->sold_qty * $unit_cost; // Calculated at cost
+            $item->sold_taxes = (float) $soldQuery->sum('tax_amount');
 
             // 5. Loss/Refund (Refunded items)
             $refundResults = RefundRequest::whereIn('status', ['approved', 'pending'])
@@ -119,18 +129,13 @@ class ReportController extends Controller
 
             $refunds = $refundResults->get();
             $item->lost_qty = (int) Order::whereIn('order_id', $refunds->pluck('order_id'))->sum('quantity');
-            $rate = (float)($item->currency_conversion_rate ?: 1);
-            $item->lost_value = $refunds->sum('amount') / ($rate > 0 ? $rate : 1);
-            $item->lost_taxes = $item->lost_qty * $unit_taxes;
+            $item->lost_value = $item->lost_qty * $unit_cost; // Calculated at cost
+            $item->lost_taxes = (float) Order::whereIn('order_id', $refunds->pluck('order_id'))->sum('tax_amount');
 
-            // 6. Closing Stock - ONLY IF Filter is applied
-            $closing_qty = 0;
-            if ($hasDateFilter && $endDate && !$endDate->isFuture()) {
-                $closing_qty = $item->opening_qty + $item->purchase_qty - $item->sold_qty - $item->lost_qty;
-            }
-            $item->closing_qty = $closing_qty;
-            $item->closing_value = $closing_qty * $unit_cost;
-            $item->closing_taxes = $closing_qty * $unit_taxes;
+            // 6. Closing Stock
+            $item->closing_qty = $item->in_stock_qty - $item->sold_qty - $item->lost_qty;
+            $item->closing_value = $item->closing_qty * $unit_cost;
+            $item->closing_taxes = $item->closing_qty * $unit_taxes;
         }
 
         if ($request->ajax()) {
@@ -138,8 +143,9 @@ class ReportController extends Controller
         }
 
         $countries = InventoryVoucher::whereNotNull('country_region')->get()->pluck('country_region')->flatten()->unique()->filter()->sort();
+        $cities = InventoryVoucher::whereNotNull('city')->get()->pluck('city')->flatten()->unique()->filter()->sort();
 
-        return view('dashboard.reports.stock', compact('stock_data', 'countries'));
+        return view('dashboard.reports.stock', compact('stock_data', 'countries', 'cities'));
     }
 
     public function profitAndLossReport(Request $request)
@@ -187,10 +193,13 @@ class ReportController extends Controller
             }
             $item->sold_qty = (int) $soldQuery->sum('quantity');
 
-            $rate = (float)($item->currency_conversion_rate ?: 1);
+            $rate = 1.0;
+            if ($item->currency !== $item->local_currency) {
+                $rate = (float)($item->currency_conversion_rate ?: 1);
+            }
             $item->sold_value_raw = $soldQuery->sum('amount'); // Transaction currency
             $item->sold_value = $item->sold_value_raw / ($rate > 0 ? $rate : 1); // Local currency
-            $item->sold_taxes = $item->sold_qty * $unit_taxes;
+            $item->sold_taxes = (float) $soldQuery->sum('tax_amount');
 
             // 2. Purchases - Total for this SKU record
             $item->purchase_qty = (int)$item->purchased_qty;
@@ -214,7 +223,7 @@ class ReportController extends Controller
             $item->lost_qty = (int) Order::whereIn('order_id', $refundsPL->pluck('order_id'))->sum('quantity');
             $item->lost_value_raw = $refundsPL->sum('amount'); // Transaction currency
             $item->lost_value = $item->lost_value_raw / ($rate > 0 ? $rate : 1); // Local currency
-            $item->lost_taxes = $item->lost_qty * $unit_taxes;
+            $item->lost_taxes = (float) Order::whereIn('order_id', $refundsPL->pluck('order_id'))->sum('tax_amount');
 
             // 4. Profit/Loss
             // Profit Qty = Sold Qty - Lost Qty (since lost/refunded items aren't contributing to profit)
@@ -266,20 +275,23 @@ class ReportController extends Controller
         if ($request->filled('country_region')) {
             $query->whereJsonContains('country_region', $request->country_region);
         }
+        if ($request->filled('city')) {
+            $query->whereJsonContains('city', $request->city);
+        }
 
         // Date range handling
         $startDate = null;
         $endDate = null;
-        $hasDateFilter = $request->filled('period_type') || $request->filled('filter_date');
+        $hasDateFilter = $request->filled('date_range');
 
         if ($hasDateFilter) {
-            $baseDate = $request->filled('filter_date') ? Carbon::parse($request->filter_date) : now();
-            if ($request->period_type == 'weekly') {
-                $startDate = $baseDate->copy()->startOfWeek(Carbon::MONDAY);
-                $endDate = $baseDate->copy()->endOfWeek(Carbon::SUNDAY);
+            $dates = explode(' to ', $request->date_range);
+            if (count($dates) == 2) {
+                $startDate = Carbon::parse($dates[0])->startOfDay();
+                $endDate = Carbon::parse($dates[1])->endOfDay();
             } else {
-                $startDate = $baseDate->copy()->startOfMonth();
-                $endDate = $baseDate->copy()->endOfMonth();
+                $startDate = Carbon::parse($dates[0])->startOfDay();
+                $endDate = Carbon::parse($dates[0])->endOfDay();
             }
         }
 
@@ -298,6 +310,7 @@ class ReportController extends Controller
             'Sr. No.',
             'SKU ID',
             'Voucher Type',
+            'City',
             'Opening Qty',
             'Opening Value',
             'Opening Taxes',
@@ -326,7 +339,7 @@ class ReportController extends Controller
                 $unit_cost = (float) $item->purchase_value_per_unit;
                 $unit_taxes = $item->purchased_qty > 0 ? (float) $item->taxes / $item->purchased_qty : 0;
 
-                // 1. Opening - ONLY IF Filter is applied
+                // 1. Opening Stock - ONLY IF Filter is applied
                 $opening_qty = 0;
                 if ($hasDateFilter && $startDate) {
                     $purchasedBefore = ($item->purchase_date && Carbon::parse($item->purchase_date)->lt($startDate)) ? (int)$item->purchased_qty : 0;
@@ -334,23 +347,30 @@ class ReportController extends Controller
                         ->where('status', 'delivered')
                         ->where('created_at', '<', $startDate)
                         ->sum('quantity');
-                    $opening_qty = max(0, $purchasedBefore - $soldBefore);
+                    $lostBefore = (int) Order::whereIn('order_id', RefundRequest::whereIn('status', ['approved', 'pending'])->where('created_at', '<', $startDate)->pluck('order_id'))
+                        ->where('voucher_id', $item->sku_id)
+                        ->sum('quantity');
+                    $opening_qty = max(0, $purchasedBefore - $soldBefore - $lostBefore);
                 }
 
-                // 2. Purchases (Additions) - Always show total initial purchase
+                // 2. Purchases (Additions)
                 $purchase_qty = (int)$item->purchased_qty;
+                if ($hasDateFilter && $startDate) {
+                    $purchaseInPeriod = ($item->purchase_date && Carbon::parse($item->purchase_date)->between($startDate, $endDate)) ? (int)$item->purchased_qty : 0;
+                    $purchase_qty = $purchaseInPeriod;
+                }
 
-                // 3. Sold (Delivered) in this period
+                // 3. Stock Available
+                $in_stock_qty = $opening_qty + $purchase_qty;
+
+                // 4. Sold (Delivered) in this period
                 $soldQuery = Order::where('voucher_id', $item->sku_id)->where('status', 'delivered');
                 if ($startDate && $endDate) {
                     $soldQuery->whereBetween('created_at', [$startDate, $endDate]);
                 }
                 $sold_qty = (int) $soldQuery->sum('quantity');
-                $sold_value = $soldQuery->sum('amount');
-                $sold_taxes = $sold_qty * $unit_taxes;
-
-                // 4. Stock Available (Current real-time balance)
-                $in_stock_qty = $item->quantity;
+                $sold_value = $sold_qty * $unit_cost; // Calculated at cost
+                $sold_taxes = (float) $soldQuery->sum('tax_amount');
 
                 // 5. Loss/Refund (Refunded items)
                 $refundedOrderIds = Order::where('voucher_id', $item->sku_id)->pluck('order_id');
@@ -363,38 +383,35 @@ class ReportController extends Controller
                     });
                 }
                 $lost_qty = (int) Order::whereIn('order_id', $refundQuery->pluck('order_id'))->sum('quantity');
-                $rate = (float)($item->currency_conversion_rate ?: 1);
-                $lost_value = $refundQuery->sum('amount') / ($rate > 0 ? $rate : 1);
-                $lost_taxes = $lost_qty * $unit_taxes;
+                $lost_value = $lost_qty * $unit_cost; // Calculated at cost
+                $lost_taxes = (float) Order::whereIn('order_id', $refundQuery->pluck('order_id'))->sum('tax_amount');
 
-                // 6. Closing Stock - ONLY IF Filter is applied
-                $closing_qty = 0;
-                if ($hasDateFilter && $endDate && !$endDate->isFuture()) {
-                    $closing_qty = $opening_qty + $purchase_qty - $sold_qty - $lost_qty;
-                }
+                // 6. Closing Stock
+                $closing_qty = $in_stock_qty - $sold_qty - $lost_qty;
 
                 fputcsv($file, [
                     $index + 1,
                     $item->sku_id,
                     $item->voucher_type,
+                    $item->city ? implode(', ', $item->city) : 'N/A',
                     $opening_qty,
-                    $item->local_currency . ' ' . number_format($opening_qty * $unit_cost, 2, '.', ''),
-                    $item->local_currency . ' ' . number_format($opening_qty * $unit_taxes, 2, '.', ''),
+                    $item->currency . ' ' . number_format($opening_qty * $unit_cost, 2, '.', ''),
+                    $item->currency . ' ' . number_format($opening_qty * $unit_taxes, 2, '.', ''),
                     $purchase_qty,
-                    $item->local_currency . ' ' . number_format($purchase_qty * $unit_cost, 2, '.', ''),
-                    $item->local_currency . ' ' . number_format($purchase_qty * $unit_taxes, 2, '.', ''),
+                    $item->currency . ' ' . number_format($purchase_qty * $unit_cost, 2, '.', ''),
+                    $item->currency . ' ' . number_format($purchase_qty * $unit_taxes, 2, '.', ''),
                     $in_stock_qty,
-                    $item->local_currency . ' ' . number_format($in_stock_qty * $unit_cost, 2, '.', ''),
-                    $item->local_currency . ' ' . number_format($in_stock_qty * $unit_taxes, 2, '.', ''),
+                    $item->currency . ' ' . number_format($in_stock_qty * $unit_cost, 2, '.', ''),
+                    $item->currency . ' ' . number_format($in_stock_qty * $unit_taxes, 2, '.', ''),
                     $sold_qty,
                     $item->currency . ' ' . number_format($sold_value, 2, '.', ''),
                     $item->currency . ' ' . number_format($sold_taxes, 2, '.', ''),
                     $lost_qty,
-                    $item->local_currency . ' ' . number_format($lost_value, 2, '.', ''),
-                    $item->local_currency . ' ' . number_format($lost_taxes, 2, '.', ''),
+                    $item->currency . ' ' . number_format($lost_value, 2, '.', ''),
+                    $item->currency . ' ' . number_format($lost_taxes, 2, '.', ''),
                     $closing_qty,
-                    $item->local_currency . ' ' . number_format($closing_qty * $unit_cost, 2, '.', ''),
-                    $item->local_currency . ' ' . number_format($closing_qty * $unit_taxes, 2, '.', '')
+                    $item->currency . ' ' . number_format($closing_qty * $unit_cost, 2, '.', ''),
+                    $item->currency . ' ' . number_format($closing_qty * $unit_taxes, 2, '.', '')
                 ]);
             }
             fclose($file);
@@ -475,7 +492,7 @@ class ReportController extends Controller
                 }
                 $sold_qty = (int) $soldQuery->sum('quantity');
                 $sold_value = $soldQuery->sum('amount');
-                $sold_taxes = $sold_qty * $unit_taxes;
+                $sold_taxes = (float) $soldQuery->sum('tax_amount');
 
                 // 2. Purchases
                 $purchase_qty = (int)$item->purchased_qty;
@@ -498,14 +515,16 @@ class ReportController extends Controller
                 $refundsPL = $refundResultsPL->get();
                 $lost_qty = (int) Order::whereIn('order_id', $refundsPL->pluck('order_id'))->sum('quantity');
                 $lost_value_raw = $refundsPL->sum('amount');
-                $rate = (float)($item->currency_conversion_rate ?: 1);
+                $rate = 1.0;
+                if ($item->currency !== $item->local_currency) {
+                    $rate = (float)($item->currency_conversion_rate ?: 1);
+                }
                 $lost_value = $lost_value_raw / ($rate > 0 ? $rate : 1);
-                $lost_taxes = $lost_qty * $unit_taxes;
+                $lost_taxes = (float) Order::whereIn('order_id', $refundsPL->pluck('order_id'))->sum('tax_amount');
 
                 // 4. Profit
                 $profit_qty = max(0, $sold_qty - $lost_qty);
                 $cost_of_sold = $sold_qty * $unit_cost;
-                $rate = (float)($item->currency_conversion_rate ?: 1);
                 $sold_value_local = $sold_value / ($rate > 0 ? $rate : 1);
                 $profit_value = $sold_value_local - $cost_of_sold - $lost_value;
 
@@ -514,16 +533,16 @@ class ReportController extends Controller
                     $item->sku_id,
                     $item->voucher_type,
                     $sold_qty,
-                    $item->currency . ' ' . number_format($sold_value, 2, '.', ''),
+                    $item->currency . ' ' . number_format($sold_value_local, 2, '.', ''), // Converted to buying currency
                     $item->currency . ' ' . number_format($sold_taxes, 2, '.', ''),
                     $purchase_qty,
-                    $item->local_currency . ' ' . number_format($purchase_value, 2, '.', ''),
-                    $item->local_currency . ' ' . number_format($purchase_taxes, 2, '.', ''),
+                    $item->currency . ' ' . number_format($purchase_value, 2, '.', ''),
+                    $item->currency . ' ' . number_format($purchase_taxes, 2, '.', ''),
                     $lost_qty,
-                    $item->local_currency . ' ' . number_format($lost_value, 2, '.', ''),
-                    $item->local_currency . ' ' . number_format($lost_taxes, 2, '.', ''),
+                    $item->currency . ' ' . number_format($lost_value, 2, '.', ''),
+                    $item->currency . ' ' . number_format($lost_taxes, 2, '.', ''),
                     $profit_qty,
-                    $item->local_currency . ' ' . number_format($profit_value, 2, '.', ''),
+                    $item->currency . ' ' . number_format($profit_value, 2, '.', ''),
                     '0.00'
                 ]);
             }
@@ -611,12 +630,50 @@ class ReportController extends Controller
 
     public function revenue()
     {
+        // 1. Total revenue: sum of delivered orders in USD
+        $total_revenue = Order::with('inventoryVoucher')
+            ->where('status', 'delivered')
+            ->get()
+            ->sum(function ($order) {
+                $voucher = $order->inventoryVoucher;
+                if (!$voucher) return 0;
+                $rate = 1.0;
+                if ($voucher->currency !== 'USD') {
+                    $rate = (float)($voucher->currency_conversion_rate ?: 1);
+                }
+                return $order->amount / ($rate > 0 ? $rate : 1.0);
+            });
+
+        // 2. Available balance: sum of all users' wallet balances in USD
+        $available_balance = User::sum('wallet_balance');
+
+        // 3. Pending payments: sum of pending orders in USD
+        $pending_payments = Order::with('inventoryVoucher')
+            ->where('status', 'pending')
+            ->get()
+            ->sum(function ($order) {
+                $voucher = $order->inventoryVoucher;
+                if (!$voucher) return 0;
+                $rate = 1.0;
+                if ($voucher->currency !== 'USD') {
+                    $rate = (float)($voucher->currency_conversion_rate ?: 1);
+                }
+                return $order->amount / ($rate > 0 ? $rate : 1.0);
+            });
+
+        // 4. Refund amount: sum of approved refund requests in USD
+        $refund_amount = RefundRequest::where('status', 'approved')->sum('amount');
+
         $stats = [
-            'total_revenue' => 15250.00,
-            'available_balance' => 8420.50,
-            'pending_payments' => 1250.00,
-            'refund_amount' => 450.00,
+            'total_revenue' => $total_revenue,
+            'available_balance' => $available_balance,
+            'pending_payments' => $pending_payments,
+            'refund_amount' => $refund_amount,
         ];
-        return view('dashboard.revenue.index', compact('stats'));
+
+        // 5. Wallet Ledgers: latest 20 transactions
+        $ledgers = \App\Models\WalletLedger::with('user')->latest()->limit(20)->get();
+
+        return view('dashboard.revenue.index', compact('stats', 'ledgers'));
     }
 }

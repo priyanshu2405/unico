@@ -17,13 +17,20 @@ class RefundController extends Controller
 {
     public function index(Request $request)
     {
+        $authUser = auth()->user();
+        if (!$authUser->isAdmin() && !$authUser->can_process_refunds) {
+            abort(403, 'Unauthorized action.');
+        }
+
         $query = RefundRequest::with(['user', 'order'])->latest();
 
-        $authUser = auth()->user();
-        if ($authUser->isManager() && !$authUser->isAdmin()) {
-            $query->whereHas('user', function ($q) use ($authUser) {
-                $q->where('country', $authUser->country);
-            });
+        if (($authUser->isManager() || $authUser->isSupport()) && !$authUser->isAdmin()) {
+            if (!$authUser->can_view_all_countries) {
+                $permitted = $authUser->permitted_countries ?? [];
+                $query->whereHas('user', function ($q) use ($permitted) {
+                    $q->whereIn('country', $permitted);
+                });
+            }
         }
 
         if ($request->filled('status')) {
@@ -70,13 +77,20 @@ class RefundController extends Controller
 
     public function adminExport(Request $request)
     {
+        $authUser = auth()->user();
+        if (!$authUser->isAdmin() && !$authUser->can_process_refunds) {
+            abort(403, 'Unauthorized action.');
+        }
+
         $query = RefundRequest::with('user')->latest();
 
-        $authUser = auth()->user();
-        if ($authUser->isManager() && !$authUser->isAdmin()) {
-            $query->whereHas('user', function ($q) use ($authUser) {
-                $q->where('country', $authUser->country);
-            });
+        if (($authUser->isManager() || $authUser->isSupport()) && !$authUser->isAdmin()) {
+            if (!$authUser->can_view_all_countries) {
+                $permitted = $authUser->permitted_countries ?? [];
+                $query->whereHas('user', function ($q) use ($permitted) {
+                    $q->whereIn('country', $permitted);
+                });
+            }
         }
 
         if ($request->filled('status')) {
@@ -236,8 +250,20 @@ class RefundController extends Controller
 
    
  public function processRefund(Request $request, $id)
-{
-    $refund = RefundRequest::with('order')->findOrFail($id);
+ {
+    $refund = RefundRequest::with(['order', 'user'])->findOrFail($id);
+    $authUser = auth()->user();
+    if (!$authUser->isAdmin()) {
+        if (!$authUser->can_process_refunds) {
+            abort(403, 'Unauthorized action.');
+        }
+        if (!$authUser->can_view_all_countries) {
+            $permitted = $authUser->permitted_countries ?? [];
+            if (!in_array($refund->user->country ?? '', $permitted)) {
+                abort(403, 'Unauthorized action.');
+            }
+        }
+    }
     $method = $refund->order->payment_method ?? '';
     $isManual = !in_array($method, ['stripe', 'paypal', 'wallet']);
 
@@ -303,14 +329,38 @@ class RefundController extends Controller
 
     public function approve($id)
     {
-        $refund = RefundRequest::findOrFail($id);
+        $refund = RefundRequest::with('user')->findOrFail($id);
+        $authUser = auth()->user();
+        if (!$authUser->isAdmin()) {
+            if (!$authUser->can_process_refunds) {
+                abort(403, 'Unauthorized action.');
+            }
+            if (!$authUser->can_view_all_countries) {
+                $permitted = $authUser->permitted_countries ?? [];
+                if (!in_array($refund->user->country ?? '', $permitted)) {
+                    abort(403, 'Unauthorized action.');
+                }
+            }
+        }
         $refund->update(['status' => 'approved']);
         return back()->with('success', 'Refund request approved.');
     }
 
     public function reject(Request $request, $id)
     {
-        $refund = RefundRequest::findOrFail($id);
+        $refund = RefundRequest::with('user')->findOrFail($id);
+        $authUser = auth()->user();
+        if (!$authUser->isAdmin()) {
+            if (!$authUser->can_process_refunds) {
+                abort(403, 'Unauthorized action.');
+            }
+            if (!$authUser->can_view_all_countries) {
+                $permitted = $authUser->permitted_countries ?? [];
+                if (!in_array($refund->user->country ?? '', $permitted)) {
+                    abort(403, 'Unauthorized action.');
+                }
+            }
+        }
         $refund->update([
             'status' => 'rejected',
             'admin_note' => $request->note

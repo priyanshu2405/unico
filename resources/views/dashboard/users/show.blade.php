@@ -789,6 +789,7 @@
                                     ['name' => 'can_view_voucher_stock', 'label' => 'View Voucher Stock', 'desc' => 'Allow manager to view voucher inventory/stock'],
                                     ['name' => 'can_edit_voucher_stock', 'label' => 'Edit Voucher Stock', 'desc' => 'Allow manager to edit/update voucher inventory/stock'],
                                     ['name' => 'can_view_reports_page', 'label' => 'View Reports Page', 'desc' => 'Allow manager to access the reports dashboard page'],
+                                    ['name' => 'can_assign_support_topics', 'label' => 'Assign Support Topics', 'desc' => 'Allow manager to assign support topics to executives'],
                                     ];
 
                                     if ($user->account_type === 'support_team') {
