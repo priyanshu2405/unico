@@ -38,6 +38,12 @@ class Order extends Model
         'currency',
         'exchange_rate_applied',
         'amount_in_base_currency',
+        'promo_code_applied',
+        'promo_discount_amount',
+        'membership_discount_amount',
+        'points_redemption_amount',
+        'is_full_points_redemption',
+        'eligible_purchase_for_b2b',
     ];
 
     public function user()
@@ -58,5 +64,10 @@ class Order extends Model
     public function subAgent()
     {
         return $this->belongsTo(User::class, 'sub_agent_id');
+    }
+
+    public function rewardPoints()
+    {
+        return $this->hasMany(RewardPointsLedger::class);
     }
 }

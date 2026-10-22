@@ -104,6 +104,22 @@ class AuthController extends Controller
             'longitude'    => $validated['longitude'] ?? null,
         ]);
 
+        // Auto-generate unique referral code for user
+        \App\Services\ReferralService::ensureUserReferralCode($user);
+
+        // Bind Referrer if referral code provided in form or session
+        $refCode = $request->input('referral_code') ?: $request->query('ref');
+        if (!empty($refCode)) {
+            \App\Services\ReferralService::bindReferral($user, $refCode);
+        }
+
+        // Handle Membership selection from registration form
+        $selectedMembership = $request->input('membership_plan');
+        if (in_array($selectedMembership, ['monthly', 'yearly'])) {
+            // Note: Activates membership record in pending payment / or active trial state
+            \App\Services\MembershipService::activateMembership($user, $selectedMembership, 'pending');
+        }
+
         // Notify Admins and Managers
         $adminsAndManagers = User::whereIn('account_type', ['admin', 'manager'])->get();
         Notification::send($adminsAndManagers, new UserCreatedNotification($user));

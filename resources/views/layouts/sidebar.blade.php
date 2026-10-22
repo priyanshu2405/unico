@@ -139,6 +139,11 @@ $isNotifications = request()->routeIs('notifications.*');
                 </a>
             </li>
             <li class="nav-item">
+                <a class="nav-link {{ request()->routeIs('membership.index') ? 'active' : '' }}" href="{{route('membership.index')}}">
+                    <i class="fas fa-crown me-2 text-warning"></i> Membership
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {{ request()->routeIs('refunds.user') ? 'active' : '' }}" href="{{ route('refunds.user') }}">
                     <i class="fas fa-undo me-2"></i> My Refunds
                 </a>

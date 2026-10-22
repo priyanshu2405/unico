@@ -3,88 +3,138 @@
 namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
-
 use Illuminate\Http\Request;
-
+use App\Models\RewardPointsLedger;
 use App\Models\Order;
+use App\Services\PointsService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 
 class BonusController extends Controller
 {
+    /**
+     * Display Monthly, Quarterly, and Yearly Bonus Points Dashboard
+     */
     public function bonus(Request $request)
     {
         $user = Auth::user();
-        $query = Order::query()
-            ->leftJoin('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
-            ->select(
-                'orders.*',
-                'inventory_vouchers.brand_name as v_brand_name'
-            )
-            ->where('orders.user_id', $user->id)
-            ->where('orders.bonus_amount', '>', 0);
+        $pointsBalance = PointsService::getUserPointsBalance($user);
 
-        // Filters
-        if ($request->filled('order_id')) {
-            $query->where('orders.order_id', 'like', '%' . $request->order_id . '%');
+        $now = now();
+        $startOfMonth = $now->copy()->startOfMonth();
+        $startOfQuarter = $now->copy()->firstOfQuarter();
+        $startOfYear = $now->copy()->startOfYear();
+
+        // Qualifying units in current periods
+        $currentMonthUnits = Order::where('user_id', $user->id)
+            ->where('status', 'delivered')
+            ->where('created_at', '>=', $startOfMonth)
+            ->where('is_full_points_redemption', false)
+            ->sum('quantity');
+
+        $currentQuarterUnits = Order::where('user_id', $user->id)
+            ->where('status', 'delivered')
+            ->where('created_at', '>=', $startOfQuarter)
+            ->where('is_full_points_redemption', false)
+            ->sum('quantity');
+
+        $currentYearUnits = Order::where('user_id', $user->id)
+            ->where('status', 'delivered')
+            ->where('created_at', '>=', $startOfYear)
+            ->where('is_full_points_redemption', false)
+            ->sum('quantity');
+
+        // Next release dates as per specifications
+        $nextMonthlyRelease = $now->copy()->addMonthNoOverflow()->startOfMonth()->addDays(6); // 7th of next month
+        $nextQuarterMonth = ((int) ceil($now->month / 3) * 3) + 1;
+        $nextQuarterRelease = Carbon::create($now->year, $nextQuarterMonth <= 12 ? $nextQuarterMonth : 1, 7)->startOfDay();
+        if ($nextQuarterMonth > 12) {
+            $nextQuarterRelease->addYear();
         }
-        if ($request->filled('brand_name')) {
-            $query->where('inventory_vouchers.brand_name', 'like', '%' . $request->brand_name . '%');
+        $nextYearlyRelease = Carbon::create($now->year + 1, 1, 7)->startOfDay();
+
+        // Accrued bonus points
+        $accruedMonthly = (int) RewardPointsLedger::where('user_id', $user->id)
+            ->where('point_type', 'agent_monthly_bonus')
+            ->where('status', 'pending')
+            ->sum('points');
+
+        $accruedQuarterly = (int) RewardPointsLedger::where('user_id', $user->id)
+            ->where('point_type', 'agent_quarterly_bonus')
+            ->where('status', 'pending')
+            ->sum('points');
+
+        $accruedYearly = (int) RewardPointsLedger::where('user_id', $user->id)
+            ->where('point_type', 'agent_yearly_bonus')
+            ->where('status', 'pending')
+            ->sum('points');
+
+        $bonusStats = [
+            'month_units' => $currentMonthUnits,
+            'quarter_units' => $currentQuarterUnits,
+            'year_units' => $currentYearUnits,
+            'accrued_monthly' => $accruedMonthly,
+            'accrued_quarterly' => $accruedQuarterly,
+            'accrued_yearly' => $accruedYearly,
+            'next_monthly_release' => $nextMonthlyRelease,
+            'next_quarterly_release' => $nextQuarterRelease,
+            'next_yearly_release' => $nextYearlyRelease,
+        ];
+
+        // Bonus Ledger History
+        $query = RewardPointsLedger::query()
+            ->with(['order', 'order.inventoryVoucher'])
+            ->where('user_id', $user->id)
+            ->whereIn('point_type', ['agent_monthly_bonus', 'agent_quarterly_bonus', 'agent_yearly_bonus', 'student_purchase_bonus']);
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('point_type')) {
+            $query->where('point_type', $request->point_type);
         }
         if ($request->filled('from_date')) {
-            $query->whereDate('orders.created_at', '>=', $request->from_date);
+            $query->whereDate('created_at', '>=', $request->from_date);
         }
         if ($request->filled('to_date')) {
-            $query->whereDate('orders.created_at', '<=', $request->to_date);
-        }
-        if ($request->filled('status')) {
-            $query->where('orders.status', $request->status);
+            $query->whereDate('created_at', '<=', $request->to_date);
         }
 
         $perPage = $request->get('per_page', 15);
-        $bonusHistory = $query->latest('orders.created_at')->paginate($perPage)->withQueryString();
+        $bonusHistory = $query->latest()->paginate($perPage)->withQueryString();
 
-        $totalBonus = Order::where('user_id', $user->id)->sum('bonus_amount');
+        if ($request->ajax()) {
+            return view('dashboard.bonus-point.bonus-table', compact('bonusHistory'))->render();
+        }
 
-        // Dynamic Brands for filter
-        $brands = Order::where('user_id', $user->id)
-            ->where('bonus_amount', '>', 0)
-            ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
-            ->distinct()
-            ->pluck('inventory_vouchers.brand_name')
-            ->filter();
-
-        return view('dashboard.bonus-point.index', compact('bonusHistory', 'totalBonus', 'brands'));
+        return view('dashboard.bonus-point.index', compact('bonusHistory', 'bonusStats', 'pointsBalance', 'user'));
     }
 
+    /**
+     * Export bonus points history to CSV
+     */
     public function export(Request $request)
     {
         $user = Auth::user();
-        $query = Order::query()
-            ->leftJoin('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
-            ->select(
-                'orders.*',
-                'inventory_vouchers.brand_name as v_brand_name'
-            )
-            ->where('orders.user_id', $user->id)
-            ->where('orders.bonus_amount', '>', 0);
+        $query = RewardPointsLedger::query()
+            ->with(['order', 'order.inventoryVoucher'])
+            ->where('user_id', $user->id)
+            ->whereIn('point_type', ['agent_monthly_bonus', 'agent_quarterly_bonus', 'agent_yearly_bonus', 'student_purchase_bonus']);
 
-        if ($request->filled('order_id')) {
-            $query->where('orders.order_id', 'like', '%' . $request->order_id . '%');
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
         }
-        if ($request->filled('brand_name')) {
-            $query->where('inventory_vouchers.brand_name', 'like', '%' . $request->brand_name . '%');
+        if ($request->filled('point_type')) {
+            $query->where('point_type', $request->point_type);
         }
         if ($request->filled('from_date')) {
-            $query->whereDate('orders.created_at', '>=', $request->from_date);
+            $query->whereDate('created_at', '>=', $request->from_date);
         }
         if ($request->filled('to_date')) {
-            $query->whereDate('orders.created_at', '<=', $request->to_date);
-        }
-        if ($request->filled('status')) {
-            $query->where('orders.status', $request->status);
+            $query->whereDate('created_at', '<=', $request->to_date);
         }
 
-        $history = $query->latest('orders.created_at')->get();
+        $history = $query->latest()->get();
         $filename = "bonus_points_history_" . date('Ymd_His') . ".csv";
         $handle = fopen('php://output', 'w');
 
@@ -94,18 +144,19 @@ class BonusController extends Controller
         header('Pragma: no-cache');
         header('Expires: 0');
 
-        fputcsv($handle, ['S.No', 'Order ID', 'Brand', 'Voucher', 'Amount', 'Date', 'Bonus Points', 'Status']);
+        fputcsv($handle, ['S.No', 'Date', 'Bonus Category', 'Description', 'Order ID', 'Points', 'Status', 'Release Date', 'Expiry Date']);
 
-        foreach ($history as $index => $order) {
+        foreach ($history as $index => $item) {
             fputcsv($handle, [
                 $index + 1,
-                $order->order_id,
-                $order->v_brand_name ?? 'N/A',
-                $order->voucher_type,
-                $order->amount,
-                $order->created_at->format('Y-m-d H:i'),
-                $order->bonus_amount,
-                $order->status
+                $item->created_at ? $item->created_at->format('Y-m-d H:i') : 'N/A',
+                ucfirst(str_replace('_', ' ', $item->point_type)),
+                $item->description,
+                $item->order->order_id ?? 'N/A',
+                $item->points,
+                ucfirst($item->status),
+                $item->available_at ? $item->available_at->format('Y-m-d') : 'N/A',
+                $item->expires_at ? $item->expires_at->format('Y-m-d') : 'N/A',
             ]);
         }
 

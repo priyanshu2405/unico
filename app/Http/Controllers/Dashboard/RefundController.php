@@ -373,6 +373,10 @@ class RefundController extends Controller
                 }
             }
         }
+
+        if ($refund->order) {
+            \App\Services\ReferralService::handleOrderRefund($refund->order, (float) $refund->amount);
+        }
     });
 
     return back()->with('success', 'Refund processed successfully.');
@@ -445,6 +449,10 @@ class RefundController extends Controller
                     }
                 }
             }
+        }
+
+        if ($refund->order) {
+            \App\Services\ReferralService::handleOrderRefund($refund->order, (float) $refund->amount);
         }
 
         return back()->with('success', 'Refund request approved.');

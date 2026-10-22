@@ -285,17 +285,37 @@ class VoucherController extends Controller
         $banks = BankAccountModel::where('user_id', $user->id)->get();
         $adminBanks = AdminPaymentMethod::where('status', true)->get();
 
-        // Mock data for points and store credit
+        // Real points balance and pricing calculation
+        $pointsBalance = \App\Services\PointsService::getUserPointsBalance($user);
+        $initialPricing = \App\Services\MembershipService::calculateOrderPricing($user, $voucher, 1);
+        $hasMembership = $user->hasActiveMembership();
+
         $userPoints = [
             'quarterly' => 0,
             'yearly' => 0,
             'store_credit' => $user->wallet_balance ?? 0,
-            'max_allowed' => $maxAllowed
+            'max_allowed' => $maxAllowed,
+            'available_points' => $pointsBalance['net_available_points'],
         ];
 
         $rule = $voucher;
 
-        return view('dashboard.voucher.order-now', compact('voucher', 'rule', 'userPoints', 'banks', 'adminBanks'));
+        return view('dashboard.voucher.order-now', compact(
+            'voucher', 'rule', 'userPoints', 'banks', 'adminBanks', 'pointsBalance', 'initialPricing', 'hasMembership'
+        ));
+    }
+
+    public function calculatePricing(Request $request, $id)
+    {
+        $voucher = InventoryVoucher::findOrFail($id);
+        $user = auth()->user();
+        $quantity = max(1, (int) $request->get('quantity', 1));
+        $promoCode = $request->get('promo_code');
+        $pointsToRedeem = (int) $request->get('points_to_redeem', 0);
+
+        $pricing = \App\Services\MembershipService::calculateOrderPricing($user, $voucher, $quantity, $promoCode, $pointsToRedeem);
+
+        return response()->json($pricing);
     }
 
     public function placeOrder(Request $request, $id)
@@ -343,44 +363,19 @@ class VoucherController extends Controller
             }
         }
 
-        // Calculate correct price based on user role
-        if ($user->isStudent()) {
-            $totalAmount = $voucher->student_sale_price * $request->quantity;
-        } else {
-            // Agent and Reseller see same price
-            $totalAmount = $voucher->agent_sale_price * $request->quantity;
-        }
+        // Compute full pricing breakdown with membership discount, promo code, and points redemption
+        $pricing = \App\Services\MembershipService::calculateOrderPricing(
+            $user,
+            $voucher,
+            (int) $request->quantity,
+            $request->promo_code,
+            (int) ($request->points_to_redeem ?? 0)
+        );
 
-        // Check user total 24h limit
-        $userTotalLimit = $user->voucher_limit;
-        $boughtTotalLast24h = Order::where('user_id', $user->id)
-            ->where('created_at', '>=', now()->subHours(24))
-            ->sum('quantity');
-
-        if ($boughtTotalLast24h + $request->quantity > $userTotalLimit) {
-            return response()->json(['message' => 'Your last 24 hours limit has been reached. Remaining: ' . max(0, $userTotalLimit - $boughtTotalLast24h)], 400);
-        }
-
-        // Calculate available stock dynamically
-        $allCodes = is_array($voucher->upload_vouchers) ? $voucher->upload_vouchers : [];
-        $deliveredCodes = is_array($voucher->delivered_vouchers) ? $voucher->delivered_vouchers : [];
-        $remainingCodes = array_diff($allCodes, $deliveredCodes);
-        $pendingOrdersQty = Order::where('voucher_id', $voucher->sku_id)
-            ->whereIn('status', ['pending', 'completed'])
-            ->sum('quantity');
-        $availableStock = count($remainingCodes) - $pendingOrdersQty;
-
-        if ($availableStock < $request->quantity || $voucher->status === 'OUT OF STOCK') {
-            return response()->json(['message' => 'Insufficient stock available.'], 400);
-        }
-
-        $status = 'pending';
-        $payment_receipt = null;
-        $bank_details = [];
-        
-        $voucherCurrency = CurrencyService::normalizeCurrencyCode($voucher->currency ?? 'USD');
+        $totalAmount = $pricing['total_payable'];
+        $amountInUSD = $pricing['total_payable_usd'];
+        $voucherCurrency = $pricing['currency'];
         $conversion = CurrencyService::convertToBase((float)$totalAmount, $voucherCurrency);
-        $amountInUSD = $conversion['base_amount'];
         $exchangeRateApplied = $conversion['rate'];
 
         if ($request->payment_type == 'wallet') {
@@ -503,10 +498,6 @@ class VoucherController extends Controller
                 }
             }
 
-            // Calculate tax_amount
-            $unitTaxes = $voucher->purchased_qty > 0 ? (float) $voucher->taxes / $voucher->purchased_qty : 0;
-            $taxAmount = $unitTaxes * $request->quantity;
-
             // Create Order
             $orderData = [
                 'order_id' => 'PUR-' . date('Ymd') . '-' . str_pad(Order::whereDate('created_at', now())->count() + 1, 4, '0', STR_PAD_LEFT),
@@ -520,7 +511,12 @@ class VoucherController extends Controller
                 'currency' => $voucherCurrency,
                 'exchange_rate_applied' => $exchangeRateApplied,
                 'amount_in_base_currency' => $amountInUSD,
-                'tax_amount' => $taxAmount,
+                'tax_amount' => $pricing['tax_amount'],
+                'promo_code_applied' => $pricing['promo_code'],
+                'promo_discount_amount' => $pricing['promo_discount'],
+                'membership_discount_amount' => $pricing['membership_discount'],
+                'points_redemption_amount' => $pricing['points_redemption_amount'],
+                'is_full_points_redemption' => $pricing['is_full_points_redemption'],
                 'status' => $status,
                 'referral_points' => $totalReferralPoints,
                 'bonus_amount' => $totalBonusPoints,
@@ -530,6 +526,11 @@ class VoucherController extends Controller
             $orderData = array_merge($orderData, $bank_details);
 
             $order = Order::create($orderData);
+
+            // If points were redeemed, deduct from user's points ledger using FIFO
+            if ($pricing['points_redeemed'] > 0) {
+                \App\Services\PointsService::redeemPoints($user, $pricing['points_redeemed'], $order);
+            }
 
             // Decrement quantity immediately on purchase
             $voucher->decrement('quantity', $request->quantity);
@@ -581,6 +582,9 @@ public function processDelivery($order, $codes)
         'status' => 'delivered',
         'delivery_details' => $codes
     ]);
+
+    // Record Referral and Bonus Rewards
+    \App\Services\ReferralService::recordOrderDelivered($order);
 
     // Update Inventory
     $voucher = InventoryVoucher::where('sku_id', $order->voucher_id)->first();

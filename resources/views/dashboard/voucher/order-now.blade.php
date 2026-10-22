@@ -169,9 +169,68 @@
                             <span class="text-muted">Quantity</span>
                             <span class="fw-bold" id="display-qty">1</span>
                         </div>
-                        <div class="d-flex justify-content-between mb-3 pb-3 border-bottom">
-                            <span class="text-muted">Subtotal</span>
+                        <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                            <span class="text-muted">Voucher Subtotal</span>
                             <span class="fw-bold">{{ $rule->currency }} <span id="subtotal">{{ number_format($rule->final_price, 0) }}</span></span>
+                        </div>
+
+                        {{-- Membership Discount Row --}}
+                        <div class="d-flex justify-content-between mb-2 text-success {{ ($hasMembership ?? false) ? '' : 'd-none' }}" id="row-membership-discount">
+                            <span><i class="fas fa-crown text-warning me-1"></i>Membership Discount (1%)</span>
+                            <span class="fw-bold">- {{ $rule->currency }} <span id="membership-discount-val">0.00</span></span>
+                        </div>
+
+                        {{-- Promo Code Section --}}
+                        <div class="mb-3 mt-2 p-3 bg-light rounded-3">
+                            <label class="form-label small fw-bold text-muted text-uppercase mb-2">Promotional Code</label>
+                            <div class="input-group">
+                                <input type="text" id="promo-code-input" class="form-control" placeholder="Enter promo code" style="text-transform: uppercase;">
+                                <button type="button" class="btn btn-outline-primary px-3 fw-bold" id="apply-promo-btn">Apply</button>
+                            </div>
+                            <div id="promo-feedback" class="small mt-1 d-none"></div>
+                        </div>
+
+                        {{-- Applied Promo Discount Row --}}
+                        <div class="d-flex justify-content-between mb-2 text-primary d-none" id="row-promo-discount">
+                            <span><i class="fas fa-tag me-1"></i>Promo Discount (<span id="promo-code-name"></span>)</span>
+                            <span class="fw-bold">- {{ $rule->currency }} <span id="promo-discount-val">0.00</span></span>
+                        </div>
+
+                        {{-- Reward Points Redemption Section (Specification: Min 100 points, Max 10% subtotal) --}}
+                        <div class="mb-3 p-3 bg-light rounded-3 border border-dashed border-2">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <span class="small fw-bold text-dark"><i class="fas fa-coins text-warning me-1"></i>Redeem Reward Points</span>
+                                    <div class="text-muted extra-small">1 Point = PKR 1 &bull; Max 10% of subtotal &bull; Min 100 pts</div>
+                                </div>
+                                <span class="badge bg-white text-dark border small fw-bold">
+                                    Available: <span id="available-points-badge">{{ number_format($pointsBalance['net_available_points'] ?? 0) }}</span> pts
+                                </span>
+                            </div>
+
+                            <div class="input-group">
+                                <input type="number" id="points-to-redeem" class="form-control" placeholder="0" min="0" step="10" value="0">
+                                <button type="button" class="btn btn-warning fw-bold px-3" id="use-max-points-btn">Use Max</button>
+                            </div>
+
+                            <div id="points-feedback" class="small text-muted mt-1"></div>
+
+                            {{-- Warning if full 10% allowance used (Specification Page 4 Item 5, Page 14 Item 6) --}}
+                            <div class="alert alert-warning py-1 px-2 small mt-2 mb-0 d-none" id="full-redemption-warning">
+                                <i class="fas fa-exclamation-triangle me-1"></i>Using full 10% points adjustment will not allow monthly/quarterly/yearly bonus points for this order.
+                            </div>
+                        </div>
+
+                        {{-- Applied Points Row --}}
+                        <div class="d-flex justify-content-between mb-2 text-info d-none" id="row-points-discount">
+                            <span><i class="fas fa-coins me-1"></i>Points Adjustment (<span id="points-count-redeemed">0</span> pts)</span>
+                            <span class="fw-bold">- {{ $rule->currency }} <span id="points-discount-val">0.00</span></span>
+                        </div>
+
+                        {{-- Estimated Taxes --}}
+                        <div class="d-flex justify-content-between mb-3 pb-3 border-bottom text-muted">
+                            <span>Estimated Taxes</span>
+                            <span class="fw-bold">+ {{ $rule->currency }} <span id="taxes-val">0.00</span></span>
                         </div>
 
                         <!-- Payment Method Selection -->
@@ -559,72 +618,89 @@
 
         function updateTotal() {
             let qty = parseInt($('#voucher-quantity').val()) || 1;
-            let total = finalPrice * qty;
+            let promoCode = ($('#promo-code-input').val() || '').trim();
+            let pointsToRedeem = parseInt($('#points-to-redeem').val()) || 0;
+
             $('#display-qty').text(qty);
-            $('#subtotal').text(total.toLocaleString());
-            $('#final-total').text(total.toLocaleString());
-            $('.required-amount-text').text(total.toLocaleString());
 
-            // USD Conversion logic for wallet & base equivalent
-            let voucherCurrency = "{{ $rule->currency }}";
-            let userCurrency = "{{ $userCurrency }}";
+            // Server-side dynamic calculation API
+            $.get("{{ route('vouchers.order.calculate', $rule->id) }}", {
+                quantity: qty,
+                promo_code: promoCode,
+                points_to_redeem: pointsToRedeem
+            }, function(res) {
+                // Subtotal
+                $('#subtotal').text(res.base_subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }));
 
-            if (voucherCurrency !== 'USD') {
-                $.get("{{ route('currency.convert') }}", {
-                    amount: total,
-                    from: voucherCurrency,
-                    to: 'USD'
-                }, function(data) {
-                    if (data.success) {
-                        $('#total-usd').text(data.converted.toFixed(2));
-                        $('.required-usd-text').text(data.converted.toFixed(2));
-                        $('#final-total-usd-curr').text(data.converted.toFixed(2));
-                        $('#live-rate').text(data.rate.toFixed(4));
-                        
-                        let balance = {{ auth()->user()->wallet_balance ?? 0 }};
-                        if (data.converted > balance) {
-                            $('#wallet-insufficient').removeClass('d-none');
-                        } else {
-                            $('#wallet-insufficient').addClass('d-none');
-                        }
-                    }
-                });
-            } else {
-                $('#total-usd').text(total.toFixed(2));
-                $('.required-usd-text').text(total.toFixed(2));
-                $('#final-total-usd-curr').text(total.toFixed(2));
-                $('#live-rate').text('1.0000');
-                
+                // Membership discount
+                if (res.has_membership && res.membership_discount > 0) {
+                    $('#row-membership-discount').removeClass('d-none');
+                    $('#membership-discount-val').text(res.membership_discount.toFixed(2));
+                } else {
+                    $('#row-membership-discount').addClass('d-none');
+                }
+
+                // Promo discount
+                if (res.promo_discount > 0) {
+                    $('#row-promo-discount').removeClass('d-none');
+                    $('#promo-code-name').text(res.promo_code);
+                    $('#promo-discount-val').text(res.promo_discount.toFixed(2));
+                } else {
+                    $('#row-promo-discount').addClass('d-none');
+                }
+
+                // Points discount
+                if (res.points_redemption_amount > 0) {
+                    $('#row-points-discount').removeClass('d-none');
+                    $('#points-count-redeemed').text(res.points_redeemed);
+                    $('#points-discount-val').text(res.points_redemption_amount.toFixed(2));
+                } else {
+                    $('#row-points-discount').addClass('d-none');
+                }
+
+                // Full redemption warning (waives bonus points)
+                if (res.is_full_points_redemption) {
+                    $('#full-redemption-warning').removeClass('d-none');
+                } else {
+                    $('#full-redemption-warning').addClass('d-none');
+                }
+
+                // Taxes
+                $('#taxes-val').text(res.tax_amount.toFixed(2));
+
+                // Final Total
+                let total = res.total_payable;
+                $('#final-total').text(total.toLocaleString(undefined, { minimumFractionDigits: 2 }));
+                $('.required-amount-text').text(total.toLocaleString(undefined, { minimumFractionDigits: 2 }));
+                $('#transfer-amount').val(total);
+
+                // USD conversions
+                let totalUSD = res.total_payable_usd;
+                $('#total-usd').text(totalUSD.toFixed(2));
+                $('.required-usd-text').text(totalUSD.toFixed(2));
+                $('#final-total-usd-curr').text(totalUSD.toFixed(2));
+
+                // Deduction in user currency
+                $('#final-total-user-curr').text(res.total_payable_user_curr.toFixed(2));
+                $('#wallet-deduction-user-curr').text(res.total_payable_user_curr.toFixed(2));
+
+                // Wallet balance check
                 let balance = {{ auth()->user()->wallet_balance ?? 0 }};
-                if (total > balance) {
+                if (totalUSD > balance) {
                     $('#wallet-insufficient').removeClass('d-none');
                 } else {
                     $('#wallet-insufficient').addClass('d-none');
                 }
-            }
 
-            // User Currency Conversion logic for deduction display
-            if (voucherCurrency !== userCurrency) {
-                $.get("{{ route('currency.convert') }}", {
-                    amount: total,
-                    from: voucherCurrency,
-                    to: userCurrency
-                }, function(data) {
-                    if (data.success) {
-                        let formatted = data.converted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                        $('#final-total-user-curr').text(formatted);
-                        $('#wallet-deduction-user-curr').text(formatted);
-                    }
-                });
-            } else {
-                let formatted = total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                $('#final-total-user-curr').text(formatted);
-                $('#wallet-deduction-user-curr').text(formatted);
-            }
-
-
-            // Auto fill transfer amount
-            $('#transfer-amount').val(total);
+                // Update max points cap on button
+                if (res.points_eligibility && res.points_eligibility.can_redeem) {
+                    $('#use-max-points-btn').data('max', res.points_eligibility.max_points);
+                    $('#points-feedback').html(`<span class="text-success">You can redeem up to ${res.points_eligibility.max_points} points for this order.</span>`);
+                } else {
+                    $('#use-max-points-btn').data('max', 0);
+                    $('#points-feedback').html(`<span class="text-muted">${res.points_eligibility ? res.points_eligibility.reason : ''}</span>`);
+                }
+            });
 
             // Update Points Display
             $('.referral-points-display').each(function() {
@@ -636,6 +712,32 @@
                 $(this).text(base * qty);
             });
         }
+
+        // Apply Promo Button click
+        $('#apply-promo-btn').click(function() {
+            let code = $('#promo-code-input').val().trim();
+            if (!code) {
+                $('#promo-feedback').removeClass('d-none text-success').addClass('text-danger').text('Please enter a promotional code.');
+                return;
+            }
+            updateTotal();
+            $('#promo-feedback').removeClass('d-none text-danger').addClass('text-success').text('Checking and applying promo code...');
+        });
+
+        // Use Max Points Button click
+        $('#use-max-points-btn').click(function() {
+            let max = parseInt($(this).data('max')) || 0;
+            if (max >= 100) {
+                $('#points-to-redeem').val(max);
+                updateTotal();
+            } else {
+                toastr.info('A minimum of 100 points is required to redeem.');
+            }
+        });
+
+        $('#points-to-redeem').on('change input', function() {
+            updateTotal();
+        });
 
         // Initial call
         updateTotal();
@@ -840,6 +942,10 @@
                 });
                 return; // Exit here as submitOrder will be called asynchronously
             }
+
+            // Append promo code and points to redeem
+            formData.append('promo_code', ($('#promo-code-input').val() || '').trim());
+            formData.append('points_to_redeem', parseInt($('#points-to-redeem').val()) || 0);
 
             btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin me-2"></i> Processing...');
             submitOrder(formData, btn);

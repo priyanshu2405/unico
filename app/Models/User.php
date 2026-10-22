@@ -124,6 +124,13 @@ class User extends Authenticatable implements MustVerifyEmail
         'rating',
         'voucher_limit',
         'sub_agent_id',
+        'referral_code',
+        'referred_by',
+        'referral_registered_at',
+        'has_active_membership',
+        'membership_type',
+        'membership_expires_at',
+        'membership_promo_code',
     ];
 
     /**
@@ -725,4 +732,50 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->getPreferredCurrency();
     }
+
+    public function referrer()
+    {
+        return $this->belongsTo(User::class, 'referred_by');
+    }
+
+    public function referrals()
+    {
+        return $this->hasMany(User::class, 'referred_by');
+    }
+
+    public function rewardPoints(): HasMany
+    {
+        return $this->hasMany(RewardPointsLedger::class);
+    }
+
+    public function b2bQualificationsAsReferrer(): HasMany
+    {
+        return $this->hasMany(B2bReferralQualification::class, 'referrer_id');
+    }
+
+    public function b2bQualificationAsReferred()
+    {
+        return $this->hasOne(B2bReferralQualification::class, 'referred_id');
+    }
+
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(Membership::class);
+    }
+
+    public function activeMembership()
+    {
+        return $this->hasOne(Membership::class)
+            ->where('status', 'active')
+            ->where('expires_at', '>', now());
+    }
+
+    public function hasActiveMembership(): bool
+    {
+        if ($this->has_active_membership && $this->membership_expires_at && now()->lt($this->membership_expires_at)) {
+            return true;
+        }
+        return false;
+    }
 }
+

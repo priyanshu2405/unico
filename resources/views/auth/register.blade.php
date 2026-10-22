@@ -251,6 +251,34 @@ $accountLocked = $lockRequested && $defaultType === $requestedType;
                     </div>
                 </div>
 
+                <div class="form-group-custom">
+                    <label>Referral Code <span class="text-muted fw-normal">(Optional)</span></label>
+                    <div class="input-group">
+                        <span class="input-group-text bg-light border-end-0" style="border-radius: 10px 0 0 10px;"><i class="fas fa-gift text-primary"></i></span>
+                        <input name="referral_code" type="text" placeholder="e.g. UC-AG-123456" value="{{ old('referral_code', request('ref')) }}" class="form-control border-start-0" style="border-radius: 0 10px 10px 0; text-transform: uppercase;">
+                    </div>
+                    @if(request('ref'))
+                        <small class="text-success"><i class="fas fa-check-circle me-1"></i>Referral code auto-applied from link</small>
+                    @endif
+                </div>
+
+                {{-- Membership Selection (Specification Item 22) --}}
+                <div class="mb-3">
+                    <label class="d-block small fw-bold text-dark mb-2">
+                        <i class="fas fa-crown text-warning me-1"></i>UniCou Membership <span class="badge bg-soft-success text-success ms-1">Extra 1% Discount</span>
+                    </label>
+                    <div class="btn-group w-100" role="group" aria-label="Membership Selection">
+                        <input type="radio" class="btn-check" name="membership_plan" id="plan_none" value="none" checked autocomplete="off">
+                        <label class="btn btn-outline-secondary btn-sm py-2" for="plan_none">Standard<br><small class="text-muted">No Plan</small></label>
+
+                        <input type="radio" class="btn-check" name="membership_plan" id="plan_monthly" value="monthly" autocomplete="off">
+                        <label class="btn btn-outline-primary btn-sm py-2" for="plan_monthly">Monthly<br><small class="fw-bold">Rs. 1,500/mo</small></label>
+
+                        <input type="radio" class="btn-check" name="membership_plan" id="plan_yearly" value="yearly" autocomplete="off">
+                        <label class="btn btn-outline-success btn-sm py-2" for="plan_yearly">Annual<br><small class="fw-bold">12 Months</small></label>
+                    </div>
+                </div>
+
                 <div class="captcha-wrapper">
                     <div class="g-recaptcha" data-sitekey="{{ config('services.recaptcha.site_key') }}"></div>
                 </div>

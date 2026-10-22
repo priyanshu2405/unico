@@ -30,6 +30,7 @@ use App\Http\Controllers\Dashboard\StudentController;
 use App\Http\Controllers\Dashboard\ManagerController;
 use App\Http\Controllers\Dashboard\PricingController;
 use App\Http\Controllers\Dashboard\ReferralController;
+use App\Http\Controllers\Dashboard\MembershipController;
 use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use App\Models\User;
@@ -309,6 +310,7 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     // Voucher Management
     Route::get('/vouchers', [VoucherController::class, 'index'])->name('vouchers');
     Route::get('/vouchers/order/{id}', [VoucherController::class, 'showOrder'])->name('vouchers.order');
+    Route::get('/vouchers/order/{id}/calculate', [VoucherController::class, 'calculatePricing'])->name('vouchers.order.calculate');
     Route::post('/vouchers/order/{id}', [VoucherController::class, 'placeOrder'])->name('vouchers.order.post');
     Route::get('/vouchers/create', [VoucherController::class, 'create'])->name('vouchers.create');
     Route::post('/vouchers/store', [VoucherController::class, 'store'])->name('vouchers.store');
@@ -317,6 +319,20 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::delete('/vouchers/{id}/delete', [VoucherController::class, 'destroy'])->name('vouchers.destroy');
     Route::get('/vouchers-export', [VoucherController::class, 'export'])->name('vouchers.export');
     Route::post('/vouchers-import', [VoucherController::class, 'import'])->name('vouchers.import');
+
+    // Referral System
+    Route::get('/referral', [ReferralController::class, 'referral'])->name('referral');
+    Route::post('/referral/bind', [ReferralController::class, 'bind'])->name('referral.bind');
+    Route::get('/referral/export', [ReferralController::class, 'export'])->name('referral.export');
+
+    // Bonus Points System (Monthly, Quarterly, Yearly)
+    Route::get('/bonus-point', [BonusController::class, 'bonus'])->name('bonus');
+    Route::get('/bonus-point/export', [BonusController::class, 'export'])->name('bonus.export');
+
+    // Membership System (Extra 1% Discount)
+    Route::get('/membership', [MembershipController::class, 'index'])->name('membership.index');
+    Route::post('/membership/activate', [MembershipController::class, 'activate'])->name('membership.activate');
+    Route::post('/promotional-code/verify', [MembershipController::class, 'verifyPromoCode'])->name('promo.verify');
 
 
     // Inventory Management

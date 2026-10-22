@@ -155,6 +155,9 @@ class OrderController extends Controller
             'delivery_details' => $request->codes
         ]);
 
+        // Record Referral and Bonus Rewards
+        \App\Services\ReferralService::recordOrderDelivered($order);
+
         // Update Inventory delivered_vouchers and quantity
         $voucher = InventoryVoucher::where('sku_id', $order->voucher_id)->first();
         if ($voucher) {
