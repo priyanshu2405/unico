@@ -18,14 +18,13 @@
                 <th>email ID(official)</th>
                 @endif
                 <th>contact No.</th>
-                <th>Total Agent</th>
-                <th>Total Vouchers Purchased</th>
-                <th>Total Revenue Paid</th>
+                <th>Connected Users</th>
+                <th>Total Vouchers (Network)</th>
+                <th>Total Revenue (Network)</th>
                 <th>Disputed Payments</th>
                 <th>Available Referral Points</th>
                 <th>Available Bonus Points</th>
-                <!-- <th>Status</th> -->
-                <!-- <th class="text-end">Actions</th> -->
+                <th class="text-center">Sales Action</th>
             </tr>
         </thead>
         <tbody>
@@ -66,12 +65,43 @@
                 <td>{{ $user->email }}</td>
                 @endif
                 <td>{{ $user->phone }}</td>
-             <td>{{ $user->subAgents->count() }}</td>
-                <td>{{ $user->orders->where('status', 'delivered')->count() }}</td>
-                <td>{{ number_format($user->orders->where('status', 'delivered')->sum('amount'), 2) }}</td>
+                <td>
+                    <div class="d-flex flex-column gap-1">
+                        <span class="fw-bold text-dark">{{ $user->subAgents->count() }} Total</span>
+                        <div class="d-flex gap-1" style="font-size: 11px;">
+                            <span class="badge bg-primary-subtle text-primary" title="Connected Agents">{{ $user->connected_agents_count }} Agents</span>
+                            <span class="badge bg-info-subtle text-info" title="Connected Students">{{ $user->connected_students_count }} Students</span>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <a href="{{ route('sales.index', ['reseller_id' => $user->id]) }}" class="text-decoration-none fw-bold text-primary" title="View all vouchers purchased by Reseller and Sub-Agents">
+                        {{ number_format($user->total_network_vouchers_count) }}
+                    </a>
+                    @if($user->total_subagent_vouchers_count > 0)
+                    <div class="text-muted" style="font-size: 11px;">
+                        Direct: {{ number_format($user->total_direct_vouchers_count) }} | Sub: {{ number_format($user->total_subagent_vouchers_count) }}
+                    </div>
+                    @endif
+                </td>
+                <td>
+                    <a href="{{ route('sales.index', ['reseller_id' => $user->id]) }}" class="text-decoration-none fw-bold text-success" title="View total revenue by Reseller and Sub-Agents">
+                        {{ $user->currency }} {{ number_format($user->total_network_sales_amount, 2) }}
+                    </a>
+                    @if($user->total_subagent_sales_amount > 0)
+                    <div class="text-muted" style="font-size: 11px;">
+                        Direct: {{ number_format($user->total_direct_sales_amount, 2) }} | Sub: {{ number_format($user->total_subagent_sales_amount, 2) }}
+                    </div>
+                    @endif
+                </td>
                 <td>{{ $user->orders->where('status', 'disputed')->count() }}</td>
-              <td>{{ number_format($user->total_referral_points, 0) }}</td>
+                <td>{{ number_format($user->total_referral_points, 0) }}</td>
                 <td>{{ number_format($user->total_bonus_points, 2) }}</td>
+                <td class="text-center">
+                    <a href="{{ route('sales.index', ['reseller_id' => $user->id]) }}" class="btn btn-sm btn-outline-primary px-3 shadow-sm rounded-pill" title="View Sales by Agent, Student, Country, Brand">
+                        <i class="fas fa-chart-line me-1"></i> View Sales
+                    </a>
+                </td>
                 <!-- <td>
                     @php $canFreeze = auth()->user()->account_type !== 'manager' || auth()->user()->can_freeze_user; @endphp
                     <span class="badge px-3 py-2 {{ $canFreeze ? 'user-status-toggle' : '' }} {{ $user->is_active ? 'bg-success-subtle text-success' : 'bg-danger-subtle text-danger' }}"

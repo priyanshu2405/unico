@@ -189,7 +189,7 @@
                                         label += ': ';
                                     }
                                     if (context.dataset.yAxisID === 'y') {
-                                        label += 'RS ' + new Intl.NumberFormat().format(context.parsed.y);
+                                        label += '$ ' + new Intl.NumberFormat().format(context.parsed.y);
                                     } else {
                                         label += new Intl.NumberFormat().format(context.parsed.y);
                                     }
@@ -206,7 +206,7 @@
                             beginAtZero: true,
                             title: {
                                 display: true,
-                                text: 'Revenue (RS)'
+                                text: 'Revenue (USD)'
                             }
                         },
                         y1: {

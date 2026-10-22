@@ -20,8 +20,8 @@ class ManagerController extends Controller
         $stats = [
             'total_users' => User::count(),
             'pending_approvals' => User::where('profile_verification_status', 'pending')->count(),
-            'active_vouchers' => 1245, // Placeholder
-            'low_stock_alerts' => 2,    // Placeholder
+            'active_vouchers' => \App\Models\InventoryVoucher::where('status', 'active')->sum('quantity'),
+            'low_stock_alerts' => \App\Models\InventoryVoucher::where('quantity', '<=', 5)->count(),
         ];
 
         return view('dashboard.manager_dashboard', compact('stats'));
@@ -80,10 +80,14 @@ class ManagerController extends Controller
             'amount' => 'required|numeric|min:0.01|max:300',
         ]);
 
-        // Logic to add store credit would go here
-        // For now, we just simulate success
+        \App\Services\WalletService::credit(
+            $user,
+            (float)$request->amount,
+            'manager_credit',
+            'Manager credit added by ' . auth()->user()->name
+        );
         
-        return back()->with('success', 'USD ' . $request->amount . ' credit added to ' . $user->first_name . '\'s account.');
+        return back()->with('success', 'USD ' . number_format($request->amount, 2) . ' credit added to ' . $user->first_name . '\'s account.');
     }
 
     public function stopSystem()
@@ -96,10 +100,10 @@ class ManagerController extends Controller
     public function reports()
     {
         $stats = [
-            'total_sales' => Order::where('status', 'delivered')->sum('amount') ?? 0,
+            'total_sales' => Order::where('status', 'delivered')->get()->sum(fn($o) => \App\Services\CurrencyService::getOrderBaseAmount($o)) ?? 0,
             'total_orders' => Order::count(),
             'pending_orders' => Order::where('status', 'pending')->count(),
-            'total_vouchers' => Vouchar::count(),
+            'total_vouchers' => \App\Models\InventoryVoucher::sum('quantity'),
             'total_users' => User::count(),
         ];
 

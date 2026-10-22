@@ -19,7 +19,7 @@
                 <td class="fw-bold text-primary">{{ $order->order_id }}</td>
                 <td>{{ $order->v_brand_name ?? 'N/A' }}</td>
                 <td>{{ $order->voucher_type }}</td>
-                <td class="text-start fw-bold">RS {{ number_format($order->amount) }}</td>
+                <td class="text-start fw-bold">{{ $order->currency ?: ($order->inventoryVoucher->currency ?? 'USD') }} {{ number_format($order->amount, 2) }}</td>
                 <td class="text-center small text-muted">
                     {{ $order->created_at->format('Y-m-d') }}<br>
                     {{ $order->created_at->format('H:i') }}

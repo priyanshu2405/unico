@@ -262,8 +262,18 @@
                                 <i class="fas fa-wallet text-muted text-xs"></i>
                                 <span class="text-muted text-xs">Wallet</span>
                             </div>
-                            <div class="fw-bold text-dark">₹{{ number_format($user->wallet_balance, 2) }}</div>
+                            @php
+                                $uCurr = $user->currency ?? 'USD';
+                                $uBal = \App\Services\CurrencyService::convert((float)($user->wallet_balance ?? 0), 'USD', $uCurr);
+                            @endphp
+                            <div class="fw-bold text-dark">
+                                {{ $uCurr }} {{ number_format($uBal, 2) }}
+                                @if($uCurr !== 'USD')
+                                    <small class="text-muted fw-normal">(${{ number_format($user->wallet_balance, 2) }})</small>
+                                @endif
+                            </div>
                         </div>
+
                     </div>
                     <div class="col-6">
                         <div class="p-3 border rounded bg-light bg-opacity-10 h-100">
@@ -336,6 +346,13 @@
                         @if(in_array($user->account_type, ['manager', 'support_team', 'reseller_agent']))
                         <li class="nav-item">
                             <a class="nav-link py-3 px-4" id="permissions-tab" data-bs-toggle="tab" href="#permissions" role="tab">Permissions</a>
+                        </li>
+                        @endif
+                        @if($user->isResellerAgent())
+                        <li class="nav-item">
+                            <a class="nav-link py-3 px-4" id="network-tab" data-bs-toggle="tab" href="#network" role="tab">
+                                <i class="fas fa-network-wired me-1 text-primary"></i> Network & Sales ({{ $user->subAgents->count() }})
+                            </a>
                         </li>
                         @endif
                     </ul>
@@ -861,6 +878,156 @@
                                     <button type="submit" class="btn btn-primary px-5 btn-lg shadow-sm">Apply Permissions</button>
                                 </div>
                             </form>
+                        </div>
+                        @endif
+
+                        @if($user->isResellerAgent())
+                        <!-- Reseller Network & Sales Tab -->
+                        <div class="tab-pane fade" id="network" role="tabpanel">
+                            <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+                                <div>
+                                    <h5 class="fw-bold mb-1"><i class="fas fa-network-wired text-primary me-2"></i>Reseller Network & Sales Overview</h5>
+                                    <p class="text-muted small mb-0">Sales and performance report for Reseller Agent and all connected sub-agents & students.</p>
+                                </div>
+                                <div>
+                                    <a href="{{ route('sales.index', ['reseller_id' => $user->id]) }}" class="btn btn-primary btn-sm px-3 shadow-sm rounded-pill">
+                                        <i class="fas fa-chart-line me-1"></i> View Full Sales Report
+                                    </a>
+                                </div>
+                            </div>
+
+                            <!-- Performance Cards -->
+                            <div class="row g-3 mb-4">
+                                <div class="col-md-4">
+                                    <div class="card bg-light border-0 shadow-sm h-100">
+                                        <div class="card-body">
+                                            <div class="text-muted small mb-1 text-uppercase fw-semibold">Total Network Sales</div>
+                                            <h4 class="fw-bold mb-1 text-dark">{{ $user->currency }} {{ number_format($user->total_network_sales_amount, 2) }}</h4>
+                                            <div class="small text-muted border-top pt-2 mt-2 d-flex justify-content-between">
+                                                <span>Direct: <strong>{{ $user->currency }} {{ number_format($user->total_direct_sales_amount, 2) }}</strong></span>
+                                                <span>Sub-Agents: <strong>{{ $user->currency }} {{ number_format($user->total_subagent_sales_amount, 2) }}</strong></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card bg-light border-0 shadow-sm h-100">
+                                        <div class="card-body">
+                                            <div class="text-muted small mb-1 text-uppercase fw-semibold">Total Network Vouchers</div>
+                                            <h4 class="fw-bold mb-1 text-primary">{{ number_format($user->total_network_vouchers_count) }} <span class="small fs-6 text-muted">units</span></h4>
+                                            <div class="small text-muted border-top pt-2 mt-2 d-flex justify-content-between">
+                                                <span>Direct: <strong>{{ number_format($user->total_direct_vouchers_count) }}</strong></span>
+                                                <span>Sub-Agents: <strong>{{ number_format($user->total_subagent_vouchers_count) }}</strong></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card bg-light border-0 shadow-sm h-100">
+                                        <div class="card-body">
+                                            <div class="text-muted small mb-1 text-uppercase fw-semibold">Connected Users</div>
+                                            <h4 class="fw-bold mb-1 text-success">{{ $user->subAgents->count() }} <span class="small fs-6 text-muted">Total</span></h4>
+                                            <div class="small text-muted border-top pt-2 mt-2 d-flex justify-content-between">
+                                                <span>Agents: <strong>{{ $user->connected_agents_count }}</strong></span>
+                                                <span>Students: <strong>{{ $user->connected_students_count }}</strong></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Connected Users Table -->
+                            <div class="card border-0 shadow-sm">
+                                <div class="card-header bg-white py-3">
+                                    <h6 class="mb-0 fw-bold">Connected Sub-Agents & Students List</h6>
+                                </div>
+                                <div class="card-body p-0">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle mb-0" style="white-space: nowrap;">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th>User</th>
+                                                    <th>Type</th>
+                                                    <th>Location</th>
+                                                    <th>Contact</th>
+                                                    <th class="text-center">Delivered Orders</th>
+                                                    <th class="text-center">Vouchers Bought</th>
+                                                    <th class="text-end">Total Purchases</th>
+                                                    <th>Status</th>
+                                                    <th>Joined</th>
+                                                    <th class="text-center">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @php
+                                                    $networkUsers = \App\Models\User::where('sub_agent_id', $user->id)
+                                                        ->withCount(['orders as delivered_orders_count' => function ($q) {
+                                                            $q->where('status', 'delivered');
+                                                        }])
+                                                        ->withSum(['orders as delivered_orders_sum' => function ($q) {
+                                                            $q->where('status', 'delivered');
+                                                        }], 'amount')
+                                                        ->withSum(['orders as delivered_vouchers_qty' => function ($q) {
+                                                            $q->where('status', 'delivered');
+                                                        }], 'quantity')
+                                                        ->latest()
+                                                        ->get();
+                                                @endphp
+                                                @forelse($networkUsers as $nu)
+                                                <tr>
+                                                    <td>{{ $loop->iteration }}</td>
+                                                    <td>
+                                                        <div class="fw-bold">{{ $nu->first_name }} {{ $nu->last_name }}</div>
+                                                        <small class="text-muted">{{ $nu->user_id }}</small>
+                                                    </td>
+                                                    <td>
+                                                        @if($nu->account_type === 'agent')
+                                                            <span class="badge bg-primary-subtle text-primary">Agent</span>
+                                                        @elseif($nu->account_type === 'student')
+                                                            <span class="badge bg-info-subtle text-info">Student</span>
+                                                        @else
+                                                            <span class="badge bg-secondary-subtle text-secondary">{{ ucfirst($nu->account_type) }}</span>
+                                                        @endif
+                                                    </td>
+                                                    <td>
+                                                        <div>{{ $nu->country ?? 'N/A' }}</div>
+                                                        @if($nu->city)<small class="text-muted">{{ $nu->city }}</small>@endif
+                                                    </td>
+                                                    <td>
+                                                        <div>{{ $nu->email }}</div>
+                                                        @if($nu->phone)<small class="text-muted">{{ $nu->phone }}</small>@endif
+                                                    </td>
+                                                    <td class="text-center fw-bold">{{ number_format($nu->delivered_orders_count ?? 0) }}</td>
+                                                    <td class="text-center fw-bold text-primary">{{ number_format($nu->delivered_vouchers_qty ?? 0) }}</td>
+                                                    <td class="text-end fw-bold text-success">{{ $user->currency }} {{ number_format($nu->delivered_orders_sum ?? 0, 2) }}</td>
+                                                    <td>
+                                                        @if($nu->is_active)
+                                                            <span class="badge bg-success-subtle text-success">Active</span>
+                                                        @else
+                                                            <span class="badge bg-danger-subtle text-danger">Inactive</span>
+                                                        @endif
+                                                    </td>
+                                                    <td>{{ $nu->created_at ? $nu->created_at->format('d M Y') : 'N/A' }}</td>
+                                                    <td class="text-center">
+                                                        <a href="{{ route('users.show', $nu->id) }}" class="btn btn-sm btn-outline-secondary" title="View Profile">
+                                                            <i class="fas fa-eye"></i>
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                                @empty
+                                                <tr>
+                                                    <td colspan="11" class="text-center py-4 text-muted">
+                                                        <i class="fas fa-users-slash fa-2x mb-2 text-secondary opacity-50 d-block"></i>
+                                                        No sub-agents or students currently connected to this reseller.
+                                                    </td>
+                                                </tr>
+                                                @endforelse
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         @endif
                     </div>

@@ -83,17 +83,20 @@ class AuthController extends Controller
         }
 
         $geo = \App\Helpers\LocationHelper::geo();
+        $selectedCountryCode = strtoupper(trim($validated['country_code'] ?? ''));
+        $countryName = \App\Helpers\CountryHelper::getAllCountries()[$selectedCountryCode] ?? null;
 
         // 🔹 Step 3: Create User
         $user = User::create([
             'user_id'      => User::generateNextUserId(
                 $validated['account_type'],
-                $validated['country_code']
+                $selectedCountryCode
             ),
             'name'         => $validated['first_name'],
             'first_name'   => $validated['first_name'],
             'phone'        => $validated['phone'],
-            'country_iso'  => $geo['country_code'] ?? null,
+            'country_iso'  => $selectedCountryCode ?: ($geo['country_code'] ?? null),
+            'country'      => $countryName ?: ($geo['country_name'] ?? null),
             'account_type' => $validated['account_type'],
             'email'        => $validated['email'],
             'password'     => Hash::make($validated['password']),
@@ -192,7 +195,7 @@ class AuthController extends Controller
      */
     public function showStudentForm()
     {
-        if (Auth::user()->exam_purpose) {
+        if (Auth::user()->exam_purpose || Auth::user()->profile_verification_status === 'verified') {
             return redirect()->route('dashboard');
         }
         return view('auth.forms.student-admission-form');
@@ -254,6 +257,17 @@ class AuthController extends Controller
         }
 
         $data['kyc_status'] = 'pending';
+
+        if (!empty($data['country'])) {
+            $countries = \App\Helpers\CountryHelper::getAllCountries();
+            $iso = array_search($data['country'], $countries);
+            if ($iso === false && isset($countries[strtoupper($data['country'])])) {
+                $iso = strtoupper($data['country']);
+            }
+            if ($iso !== false && !empty($iso)) {
+                $data['country_iso'] = $iso;
+            }
+        }
 
         // 🔹 Save User Details first
         Auth::user()->update($data);
@@ -323,6 +337,17 @@ class AuthController extends Controller
         }
 
         $data['kyc_status'] = 'pending';
+
+        if (!empty($data['country'])) {
+            $countries = \App\Helpers\CountryHelper::getAllCountries();
+            $iso = array_search($data['country'], $countries);
+            if ($iso === false && isset($countries[strtoupper($data['country'])])) {
+                $iso = strtoupper($data['country']);
+            }
+            if ($iso !== false && !empty($iso)) {
+                $data['country_iso'] = $iso;
+            }
+        }
 
         // 🔹 Save Student Details first
         Auth::user()->update($data);
@@ -456,7 +481,7 @@ class AuthController extends Controller
      */
     private function redirectByRole(User $user)
     {
-        if ($user->account_type === 'student' && !$user->exam_purpose) {
+        if ($user->account_type === 'student' && !$user->exam_purpose && $user->profile_verification_status !== 'verified') {
             return redirect()->route('auth.form.student');
         }
         if (in_array($user->account_type, ['reseller_agent', 'agent']) && !$user->business_name) {

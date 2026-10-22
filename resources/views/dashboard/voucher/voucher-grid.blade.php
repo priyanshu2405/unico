@@ -80,7 +80,10 @@
                 <div class="price-ribbon">
                     <span class="currency">{{ $voucher->currency }}</span>
                     <span class="amount">{{ number_format($finalPrice, 0) }}</span>
-                    <span class="sub-text">Value Only</span>
+                    @php
+                        $finalPriceUsd = \App\Services\CurrencyService::convertToBase($finalPrice, $voucher->currency)['base_amount'] ?? $finalPrice;
+                    @endphp
+                    <span class="sub-text">(${{ number_format($finalPriceUsd, 2) }} USD)</span>
                 </div>
 
                 <!-- Order Button (Floating) -->

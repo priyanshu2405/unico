@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Dashboard;
 
 use App\Http\Controllers\Controller;
 use App\Models\CountryRiskLevel;
+use App\Models\ExchangeRate;
+use App\Services\CurrencyService;
 use App\Helpers\CountryHelper;
 use Illuminate\Http\Request;
 
@@ -87,7 +89,7 @@ class SettingsController extends Controller
             "Content-type"        => "text/csv",
             "Content-Disposition" => "attachment; filename=$filename",
             "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Cache-Control"       => "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0",
             "Expires"             => "0"
         ];
 
@@ -111,4 +113,61 @@ class SettingsController extends Controller
 
         return response()->stream($callback, 200, $headers);
     }
+
+    public function exchangeRates(Request $request)
+    {
+        $baseCurrency = CurrencyService::getBaseCurrency();
+        $rates = ExchangeRate::orderBy('from_currency')->get();
+
+        return view('dashboard.settings.exchange-rates', compact('baseCurrency', 'rates'));
+    }
+
+    public function updateExchangeRate(Request $request)
+    {
+        $validated = $request->validate([
+            'from_currency' => 'required|string|max:10',
+            'to_currency'   => 'nullable|string|max:10',
+            'rate'          => 'required|numeric|min:0.000001',
+            'is_active'     => 'nullable',
+        ]);
+
+        $fromCurrency = CurrencyService::normalizeCurrencyCode($validated['from_currency']);
+        $toCurrency   = CurrencyService::getBaseCurrency();
+        $isActive     = $request->has('is_active') ? (bool)$request->is_active : true;
+
+        $rateRecord = ExchangeRate::updateOrCreate(
+            [
+                'from_currency' => $fromCurrency,
+                'to_currency'   => $toCurrency,
+            ],
+            [
+                'rate'      => (float)$validated['rate'],
+                'is_active' => $isActive,
+                'effective_from' => now(),
+                'approved_by' => auth()->id(),
+            ]
+        );
+
+        if ($request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Exchange rate for {$fromCurrency} updated successfully.",
+                'data'    => $rateRecord,
+            ]);
+        }
+
+        return redirect()->back()->with('success', "Exchange rate for {$fromCurrency} updated successfully.");
+    }
+
+    public function deleteExchangeRate($id)
+    {
+        $rate = ExchangeRate::findOrFail($id);
+        if ($rate->from_currency === 'USD') {
+            return response()->json(['success' => false, 'message' => 'Base currency rate cannot be deleted.'], 400);
+        }
+        $rate->delete();
+
+        return response()->json(['success' => true, 'message' => 'Exchange rate deleted.']);
+    }
 }
+

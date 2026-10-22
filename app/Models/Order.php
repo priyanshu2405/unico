@@ -35,6 +35,9 @@ class Order extends Model
         'account_holder_name',
         'amount_transferred',
         'captured_details',
+        'currency',
+        'exchange_rate_applied',
+        'amount_in_base_currency',
     ];
 
     public function user()

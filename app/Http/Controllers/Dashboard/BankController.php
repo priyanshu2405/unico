@@ -22,17 +22,23 @@ use Stripe\PaymentIntent;
 
 use App\Models\Order;
 use App\Models\Voucher; // Check if needed, but Order model uses it
+use App\Services\CurrencyService;
 
 class BankController extends Controller
 {
     public function wiseCheckout(Request $request)
     {
-        $amount = $request->input('amount');
-        if (!$amount) {
-            return back()->with('error', 'Amount missing');
+        $amount = (float)$request->input('amount');
+        if (!$amount || $amount <= 0) {
+            return back()->with('error', 'Amount missing or invalid');
         }
 
         try {
+            $user = auth()->user();
+            $userCurrency = $user->currency ?? 'USD';
+            $conversion = CurrencyService::convertToBase($amount, $userCurrency);
+            $amountInUSD = (float)$conversion['base_amount'];
+
             $apiKey = config('services.wise.api_key');
             $profileId = config('services.wise.profile_id');
             $baseUrl = config('services.wise.base_url');
@@ -42,7 +48,7 @@ class BankController extends Controller
                 ->post($baseUrl . '/v3/quotes', [
                     'sourceCurrency' => 'USD',
                     'targetCurrency' => 'USD',
-                    'sourceAmount' => (float)$amount,
+                    'sourceAmount' => (float)$amountInUSD,
                     'targetAmount' => null,
                     'profileId' => (int)$profileId,
                 ]);
@@ -61,20 +67,23 @@ class BankController extends Controller
                     'quoteId' => $quoteId,
                     'customerTransactionId' => $orderId,
                     'payInMethods' => ['CARD', 'BANK_TRANSFER'],
-                    'redirectUrl' => route('wise.success', ['order_id' => $orderId, 'amount' => $amount]),
+                    'redirectUrl' => route('wise.success', ['order_id' => $orderId, 'amount' => $amountInUSD]),
                 ]);
 
             if ($checkoutResponse->successful()) {
                 $checkoutUrl = $checkoutResponse->json('checkoutUrl');
-                
-                // No Order creation here, just redirect to Wise
+                session()->put('wise_order_' . $orderId, [
+                    'user_id' => auth()->id(),
+                    'amount' => (float)$amountInUSD,
+                    'local_amount' => $amount,
+                    'local_currency' => $userCurrency,
+                ]);
                 return redirect($checkoutUrl);
             }
 
-            // Fallback if Checkout Session fails (maybe not enabled on account)
-            Log::warning('Wise Checkout Session Failed, falling back to simulation', ['response' => $checkoutResponse->json()]);
 
-            return redirect()->route('wise.success', ['order_id' => $orderId, 'amount' => $amount]);
+            Log::error('Wise Checkout Session Failed', ['response' => $checkoutResponse->json()]);
+            return back()->with('error', 'Wise checkout session failed to initiate. Please verify sandbox credentials.');
 
         } catch (\Exception $e) {
             Log::error('Wise Checkout Exception: ' . $e->getMessage());
@@ -85,31 +94,34 @@ class BankController extends Controller
     public function wiseSuccess(Request $request)
     {
         $orderId = $request->get('order_id');
-        $amount = $request->get('amount');
-
         if (!$orderId) {
             return redirect()->route('bank.link')->with('error', 'Invalid Wise payment');
         }
 
+        $sessionData = session()->get('wise_order_' . $orderId);
         $user = auth()->user();
+
+        if (!$sessionData || $sessionData['user_id'] !== $user->id) {
+            return redirect()->route('bank.link')->with('error', 'Invalid or expired Wise checkout session.');
+        }
+
+        $amount = (float)$sessionData['amount'];
         $exists = WalletLedger::where('transaction_id', $orderId)->exists();
 
-        if (!$exists) {
-            $user->wallet_balance += $amount;
-            $user->save();
+        if (!$exists && $amount > 0) {
+            $desc = isset($sessionData['local_amount'])
+                ? "Wallet Top-up via Wise ({$sessionData['local_amount']} {$sessionData['local_currency']})"
+                : "Wallet Top-up via Wise";
 
-            WalletLedger::create([
-                'transaction_id' => $orderId,
-                'user_id' => $user->id,
-                'type' => 'credit',
-                'amount' => $amount,
-                'source' => 'wise',
-                'description' => 'Wallet Top-up via Wise',
-                'ip_address' => $request->ip(),
-                'user_agent' => $request->userAgent(),
-                'created_at' => now(),
-            ]);
+            WalletService::credit(
+                $user,
+                $amount,
+                'wise',
+                $desc
+            );
+            session()->forget('wise_order_' . $orderId);
         }
+
 
         return redirect()->route('bank.link')->with('success', 'Amount added successfully via Wise!');
     }
@@ -200,7 +212,6 @@ class BankController extends Controller
 
     private function processSuccess($session, $ip, $userAgent)
     {
-        $amount = $session->amount_total / 100;
         $userId = $session->metadata->user_id ?? null;
 
         if (!$userId) return false;
@@ -208,32 +219,31 @@ class BankController extends Controller
         $user = User::find($userId);
         if (!$user) return false;
 
-        // ✅ Duplicate check using transaction_id
+        // Duplicate check using transaction_id
         $exists = WalletLedger::where('transaction_id', $session->id)->exists();
 
         if (!$exists) {
-            DB::transaction(function () use ($user, $amount, $session, $ip, $userAgent) {
-                // ✅ Wallet update
-                $user->wallet_balance += $amount;
-                $user->save();
+            $amountUsd = isset($session->metadata->amount_usd) ? (float)$session->metadata->amount_usd : (float)($session->amount_total / 100);
+            $localAmount = $session->metadata->local_amount ?? null;
+            $localCurr = $session->metadata->local_currency ?? ($user->currency ?? 'USD');
 
-                // ✅ Ledger entry
-                WalletLedger::create([
-                    'transaction_id' => $session->id,
-                    'user_id' => $user->id,
-                    'type' => 'credit',
-                    'amount' => $amount,
-                    'source' => 'stripe',
-                    'description' => 'Wallet Top-up via Stripe',
-                    'ip_address' => $ip,
-                    'user_agent' => $userAgent,
-                    'created_at' => now(),
-                ]);
-            });
-            return true;
+            $desc = $localAmount 
+                ? "Wallet Top-up via Stripe ({$localAmount} {$localCurr})" 
+                : "Wallet Top-up via Stripe";
+
+            if ($amountUsd > 0) {
+                WalletService::credit(
+                    $user,
+                    $amountUsd,
+                    'stripe',
+                    $desc
+                );
+                return true;
+            }
         }
         return false;
     }
+
 
     public function success(Request $request)
     {
@@ -265,12 +275,17 @@ class BankController extends Controller
     }
     public function paypalCheckout(Request $request)
     {
-        $amount = $request->input('amount');
-        if (!$amount) {
-            return back()->with('error', 'Amount missing');
+        $amount = (float)$request->input('amount');
+        if (!$amount || $amount <= 0) {
+            return back()->with('error', 'Amount missing or invalid');
         }
 
         try {
+            $user = auth()->user();
+            $userCurrency = $user->currency ?? 'USD';
+            $conversion = CurrencyService::convertToBase($amount, $userCurrency);
+            $amountInUSD = (float)$conversion['base_amount'];
+
             $token = $this->getPaypalAccessToken();
 
             $response = Http::withToken($token)
@@ -279,9 +294,9 @@ class BankController extends Controller
                     'purchase_units' => [[
                         'amount' => [
                             'currency_code' => 'USD',
-                            'value' => number_format($amount, 2, '.', ''),
+                            'value' => number_format($amountInUSD, 2, '.', ''),
                         ],
-                        'description' => 'Wallet Top-up',
+                        'description' => 'Wallet Top-up (' . number_format($amount, 2) . ' ' . $userCurrency . ')',
                     ]],
                     'application_context' => [
                         'return_url' => route('paypal.success'),
@@ -290,6 +305,7 @@ class BankController extends Controller
                         'user_action' => 'PAY_NOW',
                     ],
                 ]);
+
 
             if ($response->successful()) {
                 $order = $response->json();
@@ -396,25 +412,33 @@ class BankController extends Controller
 
             \Stripe\Stripe::setApiKey(config('services.stripe.secret'));
 
-            $amount = $request->input('amount');
+            $amount = (float)$request->input('amount');
 
-            if (!$amount) {
-                return back()->with('error', 'Amount missing');
+            if (!$amount || $amount <= 0) {
+                return back()->with('error', 'Amount missing or invalid');
             }
+
+            $user = auth()->user();
+            $userCurrency = $user->currency ?? 'USD';
+            $conversion = CurrencyService::convertToBase($amount, $userCurrency);
+            $amountInUSD = (float)$conversion['base_amount'];
 
             $session = \Stripe\Checkout\Session::create([
                 'payment_method_types' => ['card'],
                 'metadata' => [
-                    'user_id' => auth()->id(),
+                    'user_id' => $user->id,
+                    'amount_usd' => $amountInUSD,
+                    'local_amount' => $amount,
+                    'local_currency' => $userCurrency,
                 ],
 
                 'line_items' => [[
                     'price_data' => [
                         'currency' => 'usd',
                         'product_data' => [
-                            'name' => 'Wallet Top-up',
+                            'name' => 'Wallet Top-up (' . number_format($amount, 2) . ' ' . $userCurrency . ')',
                         ],
-                        'unit_amount' => $amount * 100,
+                        'unit_amount' => (int) round($amountInUSD * 100),
                     ],
                     'quantity' => 1,
                 ]],
@@ -430,6 +454,7 @@ class BankController extends Controller
             return back()->with('error', $e->getMessage());
         }
     }
+
     public function finalizeStripeLink(Request $request)
     {
         try {
@@ -600,11 +625,16 @@ class BankController extends Controller
             ->firstOrFail();
 
         try {
+            $user = auth()->user();
+            $userCurrency = $user->currency ?? 'USD';
+            $conversion = CurrencyService::convertToBase((float)$request->amount, $userCurrency);
+            $amountInUSD = (float)$conversion['base_amount'];
+
             Stripe::setApiKey(config('services.stripe.secret'));
 
             // 🔥 CREATE PAYMENT INTENT (BANK)
             $paymentIntent = PaymentIntent::create([
-                'amount' => $request->amount * 100,
+                'amount' => (int) round($amountInUSD * 100),
                 'currency' => 'usd',
 
                 'payment_method_types' => ['us_bank_account'],
@@ -621,9 +651,12 @@ class BankController extends Controller
 
                 'metadata' => [
                     'user_id' => auth()->id(),
-                    'amount' => $request->amount,
+                    'amount' => $amountInUSD,
+                    'local_amount' => $request->amount,
+                    'local_currency' => $userCurrency,
                 ]
             ]);
+
 
             return response()->json([
                 'success' => true,
@@ -645,7 +678,7 @@ class BankController extends Controller
             "Content-type"        => "text/csv",
             "Content-Disposition" => "attachment; filename=$filename",
             "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Cache-Control"       => "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0",
             "Expires"             => "0"
         ];
 
@@ -659,7 +692,7 @@ class BankController extends Controller
             'Refunds',
             'Disputes',
             'Currency Conversion @',
-            'Sale Value in Buying Currency',
+            'Sale Value in Buying Currency (USD)',
             'FX Gain/Loss',
             'Created At'
         ];
@@ -714,25 +747,26 @@ class BankController extends Controller
                 return (array)($o->inventoryVoucher->country_region ?? []);
             })->unique()->filter()->implode(', ');
 
-            // Calculate dynamic total value in buying currency
+            // Calculate dynamic total value in buying currency (USD)
             $buying_value_sum = $orders->sum(function ($order) {
-                $voucher = $order->inventoryVoucher;
-                if (!$voucher) return $order->amount;
-                $rate = 1.0;
-                if ($voucher->currency !== $voucher->local_currency) {
-                    $rate = (float)($voucher->currency_conversion_rate ?: 1);
+                if ($order->amount_in_base_currency !== null && (float)$order->amount_in_base_currency > 0) {
+                    return (float)$order->amount_in_base_currency;
                 }
-                return $order->amount / ($rate > 0 ? $rate : 1.0);
+                $cur = $order->currency ?: ($order->inventoryVoucher ? $order->inventoryVoucher->currency : 'USD');
+                return CurrencyService::convertToBase((float)$order->amount, $cur)['base_amount'];
             });
 
             // Conversion rate label
             $rates = $orders->map(function ($o) {
-                return number_format($o->inventoryVoucher->currency_conversion_rate ?? 1.0, 4);
+                $cur = $o->currency ?: ($o->inventoryVoucher ? $o->inventoryVoucher->currency : 'USD');
+                return number_format($o->exchange_rate_applied ?: CurrencyService::getRate($cur), 4);
             })->unique()->filter()->implode('/');
 
             $refunds = \App\Models\RefundRequest::whereHas('order', function ($q) use ($method) {
                 $q->where('admin_payment_method_id', $method->id);
-            })->where('status', 'approved')->sum('amount');
+            })->where('status', 'approved')->get()->sum(function ($ref) {
+                return CurrencyService::convertToBase((float)$ref->amount, $ref->currency ?: 'USD')['base_amount'];
+            });
 
             $disputesCount = \App\Models\Dispute::whereHas('user.orders', function ($q) use ($method) {
                 $q->where('admin_payment_method_id', $method->id);
@@ -748,7 +782,7 @@ class BankController extends Controller
                 'buying_sale_value' => $buying_value_sum,
                 'refunds' => $refunds,
                 'disputes' => $disputesCount,
-                'conversion_rate' => $rates ?: '1.00',
+                'conversion_rate' => $rates ?: '1.0000',
                 'created_at' => $method->created_at
             ]);
         }
@@ -763,7 +797,7 @@ class BankController extends Controller
         $stripeValue = $stripeOrders->sum('amount');
         
         $stripeCurrencies = $stripeOrders->map(function ($o) {
-            return $o->inventoryVoucher->local_currency ?? 'USD';
+            return $o->currency ?: ($o->inventoryVoucher->currency ?? 'USD');
         })->unique()->filter()->implode('/');
 
         $stripeCountries = $stripeOrders->flatMap(function ($o) {
@@ -771,22 +805,23 @@ class BankController extends Controller
         })->unique()->filter()->implode(', ');
 
         $stripeBuyingSum = $stripeOrders->sum(function ($order) {
-            $voucher = $order->inventoryVoucher;
-            if (!$voucher) return $order->amount;
-            $rate = 1.0;
-            if ($voucher->currency !== $voucher->local_currency) {
-                $rate = (float)($voucher->currency_conversion_rate ?: 1);
+            if ($order->amount_in_base_currency !== null && (float)$order->amount_in_base_currency > 0) {
+                return (float)$order->amount_in_base_currency;
             }
-            return $order->amount / ($rate > 0 ? $rate : 1.0);
+            $cur = $order->currency ?: ($order->inventoryVoucher ? $order->inventoryVoucher->currency : 'USD');
+            return CurrencyService::convertToBase((float)$order->amount, $cur)['base_amount'];
         });
 
         $stripeRates = $stripeOrders->map(function ($o) {
-            return number_format($o->inventoryVoucher->currency_conversion_rate ?? 1.0, 4);
+            $cur = $o->currency ?: ($o->inventoryVoucher ? $o->inventoryVoucher->currency : 'USD');
+            return number_format($o->exchange_rate_applied ?: CurrencyService::getRate($cur), 4);
         })->unique()->filter()->implode('/');
 
         $stripeRefunds = \App\Models\RefundRequest::whereHas('order', function ($q) {
             $q->where('payment_method', 'stripe');
-        })->where('status', 'approved')->sum('amount');
+        })->where('status', 'approved')->get()->sum(function ($ref) {
+            return CurrencyService::convertToBase((float)$ref->amount, $ref->currency ?: 'USD')['base_amount'];
+        });
 
         $stripeDisputes = \App\Models\Dispute::whereHas('user.orders', function ($q) {
             $q->where('payment_method', 'stripe');

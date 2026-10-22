@@ -26,7 +26,7 @@
                     <div class="text-muted small">{{ $refund->user->state ?? 'N/A' }}</div>
                 </td>
                 <td><span class="fw-bold">{{ $refund->order_id }}</span></td>
-                <td><span class="fw-bold text-primary">{{ $refund->order->inventoryVoucher->currency ?? 'RS' }} {{ number_format($refund->amount) }}</span></td>
+                <td><span class="fw-bold text-primary">{{ $refund->order->currency ?: ($refund->order->inventoryVoucher->currency ?? 'USD') }} {{ number_format($refund->amount, 2) }}</span></td>
                 <td>
                     <div class="text-muted small" title="{{ $refund->reason }}">
                         {{ Str::limit($refund->reason, 20) }}
@@ -69,7 +69,7 @@
                                 <div class="modal-body px-4 text-start">
                                     <div class="mb-2"><strong>User:</strong> {{ $refund->user->name }} ({{ $refund->user->email }})</div>
                                     <div class="mb-2"><strong>Order ID:</strong> {{ $refund->order_id }}</div>
-                                    <div class="mb-2"><strong>Amount:</strong> RS {{ number_format($refund->amount) }}</div>
+                                    <div class="mb-2"><strong>Amount:</strong> {{ $refund->order->currency ?: ($refund->order->inventoryVoucher->currency ?? 'USD') }} {{ number_format($refund->amount, 2) }}</div>
                                     <div class="mb-2"><strong>Reason:</strong> {{ $refund->reason }}</div>
                                     <div class="mb-2"><strong>Bank Details:</strong> {{ $refund->bank_details }}</div>
                                     <div class="mb-2"><strong>User TRX ID:</strong> {{ $refund->user_transaction_id }}</div>

@@ -2,30 +2,49 @@
 
 @section('content')
 <div class="container-fluid">
+   @php
+      $userCurr = $userCurrency ?? (auth()->user()->currency ?? 'USD');
+      $walletBalLocal = \App\Services\CurrencyService::convert((float)(auth()->user()->wallet_balance ?? 0), 'USD', $userCurr);
+   @endphp
    <div class="row g-3 mb-4">
-      <div class="col-md-6">
-         <div class="card shadow-sm border-0 border-start border-primary border-4">
+      <div class="col-md-4">
+         <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
             <div class="card-body">
-               <div class="text-muted small mb-1">Total Voucher Purchased</div>
+               <div class="text-muted small mb-1">Available Wallet Balance</div>
                <div class="d-flex align-items-center">
-                  <h3 class="fw-bold mb-0">{{ number_format($totalVouchersPurchased, 0) }}</h3>
-                  <span class="ms-auto text-success small fw-bold"><i class="fas fa-ticket-alt me-1"></i>Units</span>
+                  <div>
+                     <h3 class="fw-bold mb-0 text-success">{{ $userCurr }} {{ number_format($walletBalLocal, 2) }}</h3>
+                     @if($userCurr !== 'USD')
+                        <div class="text-muted extra-small">($ {{ number_format(auth()->user()->wallet_balance, 2) }} USD)</div>
+                     @endif
+                  </div>
+                  <span class="ms-auto text-success small fw-bold"><i class="fas fa-wallet me-1"></i>Available</span>
                </div>
             </div>
          </div>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
+         <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
+            <div class="card-body">
+               <div class="text-muted small mb-1">Total Vouchers Purchased</div>
+               <div class="d-flex align-items-center">
+                  <h3 class="fw-bold mb-0">{{ number_format($totalVouchersPurchased, 0) }}</h3>
+                  <span class="ms-auto text-primary small fw-bold"><i class="fas fa-ticket-alt me-1"></i>Units</span>
+               </div>
+            </div>
+         </div>
+      </div>
+      <div class="col-md-4">
          <div class="card shadow-sm border-0 border-start border-warning border-4 h-100">
             <div class="card-body">
-               <div class="text-muted small mb-1">Total Purchase Amount</div>
+               <div class="text-muted small mb-1">Total Purchase Amount (Spent)</div>
                <div class="d-flex align-items-center">
-                  <h3 class="fw-bold mb-0">RS {{ number_format($totalPurchaseAmount, 2) }}</h3>
+                  <h3 class="fw-bold mb-0">{{ $userCurr }} {{ number_format($totalPurchaseAmount, 2) }}</h3>
                   <span class="ms-auto text-warning small fw-bold"><i class="fas fa-money-bill-wave me-1"></i>Total Spent</span>
                </div>
             </div>
          </div>
       </div>
-
    </div>
    <!-- Charts & Alerts -->
    <div class="row g-4">
@@ -181,7 +200,7 @@
                                     label += ': ';
                                 }
                                 if (context.dataset.yAxisID === 'y') {
-                                    label += 'RS ' + new Intl.NumberFormat().format(context.parsed.y);
+                                    label += '{{ $userCurrency ?? 'USD' }} ' + new Intl.NumberFormat().format(context.parsed.y);
                                 } else {
                                     label += new Intl.NumberFormat().format(context.parsed.y);
                                 }
@@ -198,7 +217,7 @@
                         beginAtZero: true,
                         title: {
                             display: true,
-                            text: 'Revenue (RS)'
+                            text: 'Purchases ({{ $userCurrency ?? 'USD' }})'
                         }
                     },
                     y1: {

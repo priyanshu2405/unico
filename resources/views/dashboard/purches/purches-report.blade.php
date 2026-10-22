@@ -25,8 +25,9 @@
                     <label class="form-label fw-bold">Voucher Purchases Summary (Currency)</label>
                     <select name="currency" class="form-select">
                         <option value="">All Currencies</option>
-                        <option value="USD" {{ request('currency') == 'USD' ? 'selected' : '' }}>USD</option>
-                        <option value="GBP" {{ request('currency') == 'GBP' ? 'selected' : '' }}>GBP</option>
+                        @foreach($currencies as $code => $currency)
+                            <option value="{{ $code }}" {{ request('currency') == $code ? 'selected' : '' }}>{{ $code }}</option>
+                        @endforeach
                     </select>
                 </div>
 

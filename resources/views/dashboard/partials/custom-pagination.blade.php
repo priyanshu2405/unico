@@ -136,6 +136,12 @@
                         // Update browser URL
                         window.history.pushState({}, '', url);
                         
+                        // Update total count if present
+                        let newTotal = $('#ajax-users-count').data('total');
+                        if (newTotal !== undefined) {
+                            $('.total-count').text(newTotal + ' Users Found');
+                        }
+
                         // Update any page-level export links
                         const csvLink = $('#csv-export-link');
                         if (csvLink.length) {
@@ -152,6 +158,17 @@
                                 csvLink.attr('href', exportUrl);
                             } catch(e) {
                                 console.error('Error updating export link:', e);
+                            }
+                        }
+
+                        const sourceLink = $('#customer-source-export-link');
+                        if (sourceLink.length) {
+                            try {
+                                const baseUrl = sourceLink.attr('href').split('?')[0];
+                                const params = url.indexOf('?') !== -1 ? url.split('?')[1] : '';
+                                sourceLink.attr('href', baseUrl + (params ? '?' + params : ''));
+                            } catch(e) {
+                                console.error('Error updating source link:', e);
                             }
                         }
                     } else {

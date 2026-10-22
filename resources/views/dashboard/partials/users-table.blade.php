@@ -1,3 +1,4 @@
+<div id="ajax-users-count" data-total="{{ $users->total() }}" class="d-none"></div>
 <div class="table-responsive">
     <table class="table table-hover align-middle" style="white-space: nowrap;">
         <thead class="table-light">

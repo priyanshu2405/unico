@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Mail;
 use App\Models\Order;
 use App\Services\WalletService;
 use App\Helpers\CurrencyHelper;
+use App\Services\CurrencyService;
 use App\Models\BankAccountModel;
 use App\Models\AdminPaymentMethod;
 use App\Models\User;
@@ -26,22 +27,23 @@ class VoucherController extends Controller
   
     public function getConversion(Request $request)
     {
-        $amount = $request->get('amount', 0);
+        $amount = (float) $request->get('amount', 0);
         $from = $request->get('from', 'PKR');
         $to = $request->get('to', 'USD');
 
         try {
-            $converted = CurrencyHelper::convert($amount, $from, $to);
+            $converted = CurrencyService::convert($amount, $from, $to);
+            $rate = CurrencyService::getExchangeRate($from, $to);
             return response()->json([
                 'success' => true,
                 'converted' => $converted,
-                'rate' => $converted / ($amount ?: 1)
+                'rate' => $rate
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
-            ], 400);
+            ], 500);
         }
     }
     public function index(Request $request)
@@ -202,6 +204,36 @@ class VoucherController extends Controller
 
         // Check if voucher is available in user's country, state, and city
         if (!in_array($user->account_type, ['admin', 'manager'])) {
+            // Check Emergency Freeze
+            $emergencyFreeze = \App\Models\SystemSetting::where('settings_key', 'emergency_freeze')->value('settings_value') === 'on';
+            if ($emergencyFreeze) {
+                return redirect()->route('vouchers')->with('error', 'System transactions are currently frozen by admin.');
+            }
+
+            // Check Global Stop Sales
+            $stopAllSales = \App\Models\SystemSetting::where('settings_key', 'stop_all_sales')->value('settings_value') === 'on';
+            if ($stopAllSales) {
+                return redirect()->route('vouchers')->with('error', 'Sales are currently suspended.');
+            }
+
+            // Check Brand-wise Stop
+            $stoppedBrandsJson = \App\Models\SystemSetting::where('settings_key', 'stopped_brands')->value('settings_value');
+            $stoppedBrands = json_decode($stoppedBrandsJson ?? '[]', true) ?: [];
+            if (!empty($stoppedBrands) && in_array($voucher->brand_name, $stoppedBrands)) {
+                return redirect()->route('vouchers')->with('error', 'Sales for this brand are temporarily halted.');
+            }
+
+            // Check Country-wise Stop
+            $stoppedCountriesJson = \App\Models\SystemSetting::where('settings_key', 'stopped_countries')->value('settings_value');
+            $stoppedCountries = json_decode($stoppedCountriesJson ?? '[]', true) ?: [];
+            if (!empty($stoppedCountries)) {
+                $voucherCountries = is_array($voucher->country_region) ? $voucher->country_region : [$voucher->country_region];
+                $countryOverlap = array_intersect($voucherCountries, $stoppedCountries);
+                if (in_array($user->country, $stoppedCountries) || !empty($countryOverlap)) {
+                    return redirect()->route('vouchers')->with('error', 'Sales in this country/region are temporarily halted.');
+                }
+            }
+
             $countries = is_array($voucher->country_region) ? $voucher->country_region : [$voucher->country_region];
             if (!in_array($user->country, $countries) && !in_array('all', $countries) && !in_array('GLB', $countries)) {
                 return redirect()->route('vouchers')->with('error', 'This voucher is not available in your country.');
@@ -285,6 +317,32 @@ class VoucherController extends Controller
             return response()->json(['message' => 'System transactions are currently frozen by admin.'], 400);
         }
 
+        if (!in_array($user->account_type, ['admin', 'manager'])) {
+            // Check Global Stop Sales
+            $stopAllSales = \App\Models\SystemSetting::where('settings_key', 'stop_all_sales')->value('settings_value') === 'on';
+            if ($stopAllSales) {
+                return response()->json(['message' => 'Sales are currently suspended.'], 400);
+            }
+
+            // Check Brand-wise Stop
+            $stoppedBrandsJson = \App\Models\SystemSetting::where('settings_key', 'stopped_brands')->value('settings_value');
+            $stoppedBrands = json_decode($stoppedBrandsJson ?? '[]', true) ?: [];
+            if (!empty($stoppedBrands) && in_array($voucher->brand_name, $stoppedBrands)) {
+                return response()->json(['message' => 'Sales for this brand are temporarily halted.'], 400);
+            }
+
+            // Check Country-wise Stop
+            $stoppedCountriesJson = \App\Models\SystemSetting::where('settings_key', 'stopped_countries')->value('settings_value');
+            $stoppedCountries = json_decode($stoppedCountriesJson ?? '[]', true) ?: [];
+            if (!empty($stoppedCountries)) {
+                $voucherCountries = is_array($voucher->country_region) ? $voucher->country_region : [$voucher->country_region];
+                $countryOverlap = array_intersect($voucherCountries, $stoppedCountries);
+                if (in_array($user->country, $stoppedCountries) || !empty($countryOverlap)) {
+                    return response()->json(['message' => 'Sales in this country/region are temporarily halted.'], 400);
+                }
+            }
+        }
+
         // Calculate correct price based on user role
         if ($user->isStudent()) {
             $totalAmount = $voucher->student_sale_price * $request->quantity;
@@ -320,8 +378,10 @@ class VoucherController extends Controller
         $payment_receipt = null;
         $bank_details = [];
         
-        $voucherCurrency = $voucher->currency ?: 'PKR';
-        $amountInUSD = CurrencyHelper::convert($totalAmount, $voucherCurrency, 'USD');
+        $voucherCurrency = CurrencyService::normalizeCurrencyCode($voucher->currency ?? 'USD');
+        $conversion = CurrencyService::convertToBase((float)$totalAmount, $voucherCurrency);
+        $amountInUSD = $conversion['base_amount'];
+        $exchangeRateApplied = $conversion['rate'];
 
         if ($request->payment_type == 'wallet') {
             if ($user->wallet_balance < $amountInUSD) {
@@ -363,6 +423,10 @@ class VoucherController extends Controller
                 'notes' => 'Kuickpay BPS payment initiated'
             ];
         } elseif ($request->payment_type == 'stripe') {
+            if ($amountInUSD < 0.50) {
+                return response()->json(['message' => 'For Stripe payment, the minimum amount is $0.50 USD equivalent.'], 400);
+            }
+
             // Process Stripe Payment using API directly
             $stripeSecret = config('services.stripe.secret');
 
@@ -371,8 +435,8 @@ class VoucherController extends Controller
                     'Authorization' => 'Bearer ' . $stripeSecret,
                     'Content-Type' => 'application/x-www-form-urlencoded',
                 ])->asForm()->post('https://api.stripe.com/v1/charges', [
-                    'amount' => (int)($totalAmount * 100), // in cents
-                    'currency' => strtolower($voucher->currency ?: 'PKR'),
+                    'amount' => (int)round($totalAmount * 100), // in cents
+                    'currency' => strtolower($voucherCurrency),
                     'source' => $request->stripeToken,
                     'description' => 'Voucher Purchase: ' . $voucher->brand_name,
                     'metadata' => [
@@ -396,10 +460,6 @@ class VoucherController extends Controller
             } catch (\Exception $e) {
                 return response()->json(['message' => 'Stripe integration error: ' . $e->getMessage()], 500);
             }
-        }
-
-        if ($request->payment_type == 'stripe' && $totalAmount < 150) {
-            return response()->json(['message' => 'For Stripe payment, the minimum amount is 150 PKR.'], 400);
         }
 
         $referralPointsPerUnit = 0;
@@ -457,6 +517,9 @@ class VoucherController extends Controller
                 'voucher_id' => $voucher->sku_id,
                 'quantity' => $request->quantity,
                 'amount' => $totalAmount,
+                'currency' => $voucherCurrency,
+                'exchange_rate_applied' => $exchangeRateApplied,
+                'amount_in_base_currency' => $amountInUSD,
                 'tax_amount' => $taxAmount,
                 'status' => $status,
                 'referral_points' => $totalReferralPoints,
@@ -535,9 +598,10 @@ public function processDelivery($order, $codes)
     try {
         $user = $order->user;
 
+        $orderCurr = $order->currency ?: ($order->inventoryVoucher->currency ?? 'USD');
         $user->notify(new VoucherDeliveredNotification(
             $order,
-            "You have received voucher codes for Order #{$order->order_id}. Total amount: RS {$order->amount}."
+            "You have received voucher codes for Order #{$order->order_id}. Total amount: {$orderCurr} {$order->amount}."
         ));
 
         Mail::send('emails.order-delivered', [
@@ -626,34 +690,12 @@ public function processDelivery($order, $codes)
     public function export(Request $request)
     {
         $user = auth()->user();
-        $query = InventoryVoucher::where('is_expired', false);
 
-        // Country and State filtering: match user's country and state with voucher's settings
         if (!in_array($user->account_type, ['admin', 'manager'])) {
-            $query->where(function ($q) use ($user) {
-                $q->whereJsonContains('country_region', $user->country)
-                    ->orWhereJsonContains('country_region', 'all');
-            });
-
-            // If voucher has state restrictions, apply them. 
-            // If state is empty or null, it's available to all states in that country.
-            $query->where(function ($q) use ($user) {
-                $q->whereNull('state')
-                    ->orWhere('state', '[]')
-                    ->orWhere('state', 'null')
-                    ->orWhereJsonContains('state', $user->state)
-                    ->orWhereJsonContains('state', 'all');
-            });
-
-            // If voucher has city restrictions, apply them.
-            $query->where(function ($q) use ($user) {
-                $q->whereNull('city')
-                    ->orWhere('city', '[]')
-                    ->orWhere('city', 'null')
-                    ->orWhereJsonContains('city', $user->city)
-                    ->orWhereJsonContains('city', 'all');
-            });
+            abort(403, 'Unauthorized. Voucher export is only available to administrators and managers.');
         }
+
+        $query = InventoryVoucher::where('is_expired', false);
 
         // Apply same filters as index
         if ($request->filled('brand_name')) {
@@ -672,6 +714,9 @@ public function processDelivery($order, $codes)
 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
 
         fputcsv($handle, ['Sr. No.', 'SKU ID', 'Brand Name', 'Voucher Variant', 'Quantity', 'Purchase Value', 'Stock Status']);
 

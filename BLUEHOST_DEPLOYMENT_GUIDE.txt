@@ -1,0 +1,73 @@
+====================================================================
+      UNICOU VOUCHER PLATFORM - BLUEHOST DEPLOYMENT GUIDE
+====================================================================
+
+This zip archive contains the complete, production-ready UniCou Laravel
+application with all QA calculation fixes, multi-currency engines, all 6 role
+dashboards, and pre-seeded accounts.
+
+--------------------------------------------------------------------
+STEP 1: UPLOAD & EXTRACT ON BLUEHOST
+--------------------------------------------------------------------
+1. Log in to your Bluehost cPanel (or hosting dashboard).
+2. Open "File Manager" and navigate to `public_html` (or your subdomain folder).
+3. Click "Upload" and select `unicou_production_bluehost.zip`.
+4. Once uploaded, right-click the zip file and click "Extract".
+5. Note: The root `.htaccess` file is already included and configured
+   to automatically forward web requests into the `public/` folder.
+
+--------------------------------------------------------------------
+STEP 2: CREATE & IMPORT DATABASE
+--------------------------------------------------------------------
+1. In cPanel, go to "MySQL Databases":
+   - Create a new database (e.g. `youruser_unicou`).
+   - Create a new database user with a strong password.
+   - Add the user to the database with ALL PRIVILEGES.
+2. In cPanel, open "phpMyAdmin":
+   - Select your newly created database on the left.
+   - Click the "Import" tab at the top.
+   - Choose file: `database/bluehost_database_dump.sql` (included in this zip).
+   - Click "Go" to import all 37 tables, settings, and seed data.
+
+--------------------------------------------------------------------
+STEP 3: CONFIGURE YOUR .ENV FILE
+--------------------------------------------------------------------
+1. In File Manager, find `.env.production` in the root folder.
+2. Rename it to `.env` (or edit existing `.env`).
+3. Update the following lines with your Bluehost database details:
+   
+   APP_ENV=production
+   APP_DEBUG=false
+   APP_URL=https://your-domain.com
+
+   DB_CONNECTION=mysql
+   DB_HOST=127.0.0.1
+   DB_PORT=3306
+   DB_DATABASE=youruser_unicou
+   DB_USERNAME=youruser_dbuser
+   DB_PASSWORD=your_db_password
+
+4. Save the file.
+
+--------------------------------------------------------------------
+STEP 4: FILE PERMISSIONS (IF NEEDED)
+--------------------------------------------------------------------
+Make sure the following folders have write permissions (chmod 755 or 775):
+- `storage/` (and all subfolders)
+- `bootstrap/cache/`
+
+--------------------------------------------------------------------
+STEP 5: VERIFY & TEST
+--------------------------------------------------------------------
+1. Visit `https://your-domain.com/login` in your browser.
+2. You can log in using any of the 30 pre-seeded test accounts:
+   - Admin:   `admin1@unicou.test`   / `password123`
+   - Manager: `manager1@unicou.test` / `password123`
+   - Support: `support1@unicou.test` / `password123`
+   - Reseller:`reseller1@unicou.test`/ `password123`
+   - Agent:   `agent1@unicou.test`   / `password123`
+   - Student: `student1@unicou.test` / `password123`
+   (See UniCou_Implementation_And_Calculation_Report.docx for all 30 accounts).
+
+All payment gateways remain in Sandbox / Test Mode for client testing.
+====================================================================

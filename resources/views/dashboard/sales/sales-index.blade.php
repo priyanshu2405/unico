@@ -25,6 +25,20 @@
                     </div>
                 </div>
 
+                @if(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_sales_report))
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Reseller Agent</label>
+                    <select name="reseller_id" class="form-select">
+                        <option value="">All Resellers</option>
+                        @foreach($resellers as $reseller)
+                            <option value="{{ $reseller->id }}" {{ request('reseller_id') == $reseller->id ? 'selected' : '' }}>
+                                {{ $reseller->first_name }} {{ $reseller->last_name }} ({{ $reseller->user_id }})
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+
                 <div class="mb-4">
                     <label class="form-label fw-bold">Buyer Type</label>
                     <select name="user_role" class="form-select">
@@ -112,6 +126,14 @@
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
             <div>
                 <h5 class="mb-0 fw-bold text-dark">Sales Report</h5>
+                @if(isset($selectedReseller) && $selectedReseller)
+                <div class="mt-1">
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle py-1 px-2">
+                        <i class="fas fa-handshake me-1"></i> Reseller: <strong>{{ $selectedReseller->first_name }} {{ $selectedReseller->last_name }} ({{ $selectedReseller->user_id }})</strong>
+                        <a href="{{ route('sales.index') }}" class="text-danger ms-2 fw-bold text-decoration-none" title="Clear Reseller Filter">✕</a>
+                    </span>
+                </div>
+                @endif
             </div>
             <div class="d-flex gap-2">
 

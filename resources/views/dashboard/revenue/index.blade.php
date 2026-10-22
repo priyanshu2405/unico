@@ -11,7 +11,7 @@
             <div class="card shadow-sm border-0 bg-primary text-white">
                 <div class="card-body">
                     <div class="opacity-75 small mb-1">Total Revenue</div>
-                    <h3 class="fw-bold mb-0">€{{ number_format($stats['total_revenue'], 2) }}</h3>
+                    <h3 class="fw-bold mb-0">${{ number_format($stats['total_revenue'], 2) }}</h3>
                 </div>
             </div>
         </div>
@@ -19,7 +19,7 @@
             <div class="card shadow-sm border-0 bg-success text-white">
                 <div class="card-body">
                     <div class="opacity-75 small mb-1">Available Balance</div>
-                    <h3 class="fw-bold mb-0">€{{ number_format($stats['available_balance'], 2) }}</h3>
+                    <h3 class="fw-bold mb-0">${{ number_format($stats['available_balance'], 2) }}</h3>
                 </div>
             </div>
         </div>
@@ -27,7 +27,7 @@
             <div class="card shadow-sm border-0 bg-warning text-dark">
                 <div class="card-body">
                     <div class="opacity-75 small mb-1">Pending Payments</div>
-                    <h3 class="fw-bold mb-0">€{{ number_format($stats['pending_payments'], 2) }}</h3>
+                    <h3 class="fw-bold mb-0">${{ number_format($stats['pending_payments'], 2) }}</h3>
                 </div>
             </div>
         </div>
@@ -35,7 +35,7 @@
             <div class="card shadow-sm border-0 bg-danger text-white">
                 <div class="card-body">
                     <div class="opacity-75 small mb-1">Refund Amount</div>
-                    <h3 class="fw-bold mb-0">€{{ number_format($stats['refund_amount'], 2) }}</h3>
+                    <h3 class="fw-bold mb-0">${{ number_format($stats['refund_amount'], 2) }}</h3>
                 </div>
             </div>
         </div>
@@ -52,26 +52,33 @@
                         <tr>
                             <th>User</th>
                             <th>Transaction ID</th>
-                            <th>Amount</th>
-                            <th>Status</th>
+                            <th>Type</th>
+                            <th>Amount (USD)</th>
+                            <th>Source</th>
                             <th>Date</th>
                         </tr>
                     </thead>
                     <tbody>
+                        @forelse($ledgers as $ledger)
                         <tr>
-                            <td>John Doe (Agent)</td>
-                            <td>#TRX-98542</td>
-                            <td class="fw-bold">€250.00</td>
-                            <td><span class="badge bg-success">Completed</span></td>
-                            <td>22 Jan 2026</td>
+                            <td>{{ $ledger->user ? $ledger->user->name . ' (' . ucfirst(str_replace('_', ' ', $ledger->user->account_type)) . ')' : 'System / Anonymous' }}</td>
+                            <td><code>{{ $ledger->transaction_id }}</code></td>
+                            <td>
+                                <span class="badge {{ $ledger->type === 'credit' ? 'bg-success' : 'bg-danger' }}">
+                                    {{ ucfirst($ledger->type) }}
+                                </span>
+                            </td>
+                            <td class="fw-bold {{ $ledger->type === 'credit' ? 'text-success' : 'text-danger' }}">
+                                {{ $ledger->type === 'credit' ? '+' : '-' }}${{ number_format($ledger->amount, 2) }}
+                            </td>
+                            <td><span class="badge bg-secondary">{{ ucfirst(str_replace('_', ' ', $ledger->source)) }}</span></td>
+                            <td>{{ $ledger->created_at ? $ledger->created_at->format('d M Y, h:i A') : 'N/A' }}</td>
                         </tr>
+                        @empty
                         <tr>
-                            <td>Jane Smith (Student)</td>
-                            <td>#TRX-98541</td>
-                            <td class="fw-bold">€50.00</td>
-                            <td><span class="badge bg-warning text-dark">Pending</span></td>
-                            <td>21 Jan 2026</td>
+                            <td colspan="6" class="text-center text-muted py-4">No wallet transactions recorded yet.</td>
                         </tr>
+                        @endforelse
                     </tbody>
                 </table>
             </div>

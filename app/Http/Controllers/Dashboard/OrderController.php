@@ -8,6 +8,8 @@ use App\Models\InventoryVoucher;
 use App\Models\User;
 use Carbon\Carbon;
 use App\Notifications\VoucherDeliveredNotification;
+use App\Services\WalletService;
+use App\Services\CurrencyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
@@ -117,8 +119,11 @@ class OrderController extends Controller
 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
 
-        fputcsv($handle, ['Order ID', 'Customer', 'Email', 'Role', 'Voucher', 'Amount', 'Ref Points', 'Bonus Points', 'Status', 'Date']);
+        fputcsv($handle, ['Order ID', 'Customer', 'Email', 'Role', 'Voucher', 'Currency', 'Amount', 'Exchange Rate', 'Amount (USD)', 'Ref Points', 'Bonus Points', 'Status', 'Date']);
 
         foreach ($orders as $order) {
             fputcsv($handle, [
@@ -127,9 +132,12 @@ class OrderController extends Controller
                 $order->user->email ?? 'N/A',
                 $order->user_role,
                 $order->voucher_type,
-                $order->amount,
-                $order->referral_points,
-                $order->bonus_amount,
+                $order->currency ?: ($order->inventoryVoucher->currency ?? 'USD'),
+                number_format((float)$order->amount, 2, '.', ''),
+                number_format((float)($order->exchange_rate_applied ?: 1.0), 6, '.', ''),
+                number_format(CurrencyService::getOrderBaseAmount($order), 2, '.', ''),
+                $order->referral_points ?? 0,
+                number_format((float)($order->bonus_amount ?? 0), 2, '.', ''),
                 $order->status,
                 $order->created_at->format('Y-m-d H:i')
             ]);
@@ -164,9 +172,10 @@ class OrderController extends Controller
             $codes = $request->codes;
 
             // Database Notification for User
+            $orderCurr = $order->currency ?: ($order->inventoryVoucher->currency ?? 'USD');
             $user->notify(new VoucherDeliveredNotification(
                 $order,
-                "You have received voucher codes for Order #{$order->order_id}. Total amount: RS {$order->amount}."
+                "You have received voucher codes for Order #{$order->order_id}. Total amount: {$orderCurr} {$order->amount}."
             ));
 
             // Email to User
@@ -211,6 +220,33 @@ class OrderController extends Controller
             $voucher->increment('quantity', $order->quantity);
         }
 
+        // If paid via wallet, refund wallet balance to user and reverse admin credit
+        if ($order->payment_method === 'wallet' && $order->user) {
+            $amountInUSD = (float)($order->amount_in_base_currency ?? CurrencyService::convert((float)$order->amount, $order->currency ?? 'USD', 'USD'));
+            if ($amountInUSD > 0) {
+                try {
+                    WalletService::credit(
+                        $order->user,
+                        $amountInUSD,
+                        'order_cancellation_refund',
+                        "Refund for cancelled Order #{$order->order_id}"
+                    );
+
+                    $admin = User::where('account_type', 'admin')->first();
+                    if ($admin && $admin->wallet_balance >= $amountInUSD) {
+                        WalletService::debit(
+                            $admin,
+                            $amountInUSD,
+                            'order_cancellation_reversal',
+                            "Reversal of revenue for cancelled Order #{$order->order_id}"
+                        );
+                    }
+                } catch (\Exception $e) {
+                    \Illuminate\Support\Facades\Log::error("Failed to refund wallet on order cancellation: " . $e->getMessage());
+                }
+            }
+        }
+
         // Send Email to User
         try {
             $user = $order->user;
@@ -222,7 +258,7 @@ class OrderController extends Controller
             // Log error but continue
         }
 
-        return back()->with('success', 'Order cancelled and notification sent to user.');
+        return back()->with('success', 'Order cancelled, wallet refunded (if applicable), and notification sent to user.');
     }
 
     public function approve($id)
@@ -363,6 +399,9 @@ class OrderController extends Controller
 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
 
         $columns = [
             'Sr. No.',
@@ -406,7 +445,7 @@ class OrderController extends Controller
                 $order->created_at->format('Y-m-d'),
                 $order->created_at->format('H:i:s'),
                 $order->inventoryVoucher->brand_name ?? $order->v_brand_name ?? 'N/A',
-                $order->inventoryVoucher->currency ?? $order->v_currency ?? 'N/A',
+                $order->currency ?: ($order->inventoryVoucher->currency ?? $order->v_currency ?? 'USD'),
                 $countryRegion,
                 $order->inventoryVoucher->voucher_variant ?? $order->v_voucher_variant ?? 'N/A',
                 $order->inventoryVoucher->voucher_type ?? $order->v_voucher_type ?? $order->voucher_type ?? 'N/A',

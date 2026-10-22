@@ -11,6 +11,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use App\Services\CurrencyService;
+use App\Services\ProfitLossService;
 
 class PaymentController extends Controller
 {
@@ -119,22 +121,45 @@ class PaymentController extends Controller
         }
 
         try {
-            $rule = VoucherPriceRule::with('inventoryVoucher')->findOrFail($safepayData['rule_id']);
-            $voucher = $rule->inventoryVoucher;
+            $voucher = InventoryVoucher::findOrFail($safepayData['rule_id']);
             $user = auth()->user();
 
+            $referralPointsPerUnit = 0;
+            $bonusPointsPerUnit = 0;
+            if ($user->isStudent()) {
+                $referralPointsPerUnit = $voucher->student_referral_points_per_unit;
+                $bonusPointsPerUnit = $voucher->student_bonus_points_per_unit;
+            } elseif ($user->isResellerAgent()) {
+                $referralPointsPerUnit = $voucher->referral_points_reseller;
+            } elseif ($user->isRegularAgent()) {
+                $referralPointsPerUnit = $voucher->agent_referral_points_per_unit;
+                $bonusPointsPerUnit = $voucher->agent_bonus_points_per_unit;
+            }
+
+            $unitTaxes = $voucher->purchased_qty > 0 ? (float) $voucher->taxes / $voucher->purchased_qty : 0;
+            $taxAmount = $unitTaxes * $safepayData['quantity'];
+
+            $orderCurrency = CurrencyService::normalizeCurrencyCode($voucher->currency ?? 'PKR');
+            $conversion = CurrencyService::convertToBase((float)$safepayData['amount'], $orderCurrency);
+
             $order = Order::create([
-                'order_id' => 'PUR-' . strtoupper(\Illuminate\Support\Str::random(10)),
+                'order_id' => 'PUR-' . date('Ymd') . '-' . str_pad(Order::whereDate('created_at', now())->count() + 1, 4, '0', STR_PAD_LEFT),
                 'user_id' => $user->id,
+                'sub_agent_id' => $user->sub_agent_id,
                 'user_role' => $user->account_type,
                 'voucher_type' => $voucher->voucher_type,
                 'voucher_id' => $voucher->sku_id,
                 'quantity' => $safepayData['quantity'],
                 'amount' => $safepayData['amount'],
+                'currency' => $orderCurrency,
+                'exchange_rate_applied' => $conversion['rate'],
+                'amount_in_base_currency' => $conversion['base_amount'],
+                'tax_amount' => $taxAmount,
                 'status' => 'completed',
                 'payment_method' => 'safepay',
-                'referral_points' => 0,
-                'bonus_amount' => 0,
+                'referral_points' => $referralPointsPerUnit * $safepayData['quantity'],
+                'bonus_amount' => $bonusPointsPerUnit * $safepayData['quantity'],
+                'notes' => 'SafePay payment completed (Order ID: ' . ($safepayData['safepay_order_id'] ?? '') . ')',
             ]);
 
             $voucher->decrement('quantity', $safepayData['quantity']);
@@ -300,6 +325,9 @@ class PaymentController extends Controller
 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
 
         $columns = [
             'Sr. No.',
@@ -309,7 +337,7 @@ class PaymentController extends Controller
             'Time',
             'Buyer Name',
             'Buyer Type',
-            'Local Currency',
+            'Transaction Currency',
             'Country',
             'State',
             'Brand Name',
@@ -317,10 +345,15 @@ class PaymentController extends Controller
             'Voucher Type',
             'Sale Invoice No.',
             'Quantity',
-            'Sales Value',
+            'Sales Value in Local Currency',
             'Payment Receive Bank',
-            'Currency Conversion',
-            'FX Gain/Loss',
+            'Admin Exchange Rate (to USD)',
+            'Quoted Sales Value (USD)',
+            'Settled Sales Value (USD)',
+            'Total Purchase Cost (USD)',
+            'Gross Profit (USD)',
+            'Gateway FX Variance (USD)',
+            'Net Realized Profit (USD)',
             'Referral Points',
             'Bonus Points'
         ];
@@ -328,11 +361,30 @@ class PaymentController extends Controller
         fputcsv($handle, $columns);
 
         foreach ($records as $index => $payment) {
-            $localCurrency = optional($payment->inventoryVoucher)->local_currency ?? 'PKR';
-            $conversionRate = optional($payment->inventoryVoucher)->currency_conversion_rate ?? 1.0;
-            $purchaseValuePerUnit = optional($payment->inventoryVoucher)->purchase_value_per_unit ?? 0;
-            $totalPurchaseValue = $purchaseValuePerUnit * $payment->quantity;
-            $fxGainLoss = $payment->amount - $totalPurchaseValue;
+            $currencyCode = $payment->currency ?: (optional($payment->inventoryVoucher)->currency ?? 'USD');
+            $saleValueLocal = (float) $payment->amount;
+            $quantity = max(1, (int)$payment->quantity);
+
+            $adminRate = (float)($payment->exchange_rate_applied ?: CurrencyService::getRate($currencyCode));
+            $quotedSalesUsd = $saleValueLocal * $adminRate;
+
+            if ($payment->amount_in_base_currency !== null && (float)$payment->amount_in_base_currency > 0) {
+                $settledSalesUsd = (float)$payment->amount_in_base_currency;
+            } else {
+                $settledSalesUsd = $quotedSalesUsd;
+            }
+
+            // Purchase Cost (USD) — using pre-calculated locked USD columns
+            $unitCostUsd = 0.0;
+            $totalPurchaseCostUsd = 0.0;
+            if ($payment->inventoryVoucher) {
+                $unitCostUsd = (float) ProfitLossService::getInventoryUnitCostBase($payment->inventoryVoucher);
+                $totalPurchaseCostUsd = $unitCostUsd * $quantity;
+            }
+
+            $grossProfitUsd = $quotedSalesUsd - $totalPurchaseCostUsd;
+            $gatewayFxVarianceUsd = $settledSalesUsd - $quotedSalesUsd;
+            $netRealizedProfitUsd = $grossProfitUsd + $gatewayFxVarianceUsd;
 
             fputcsv($handle, [
                 $index + 1,
@@ -342,7 +394,7 @@ class PaymentController extends Controller
                 $payment->created_at->format('H:i:s'),
                 $payment->user->name ?? 'N/A',
                 ucfirst(str_replace('_', ' ', $payment->user_role)),
-                $localCurrency,
+                $currencyCode,
                 $payment->user->country ?? 'N/A',
                 $payment->user->state ?? 'N/A',
                 optional($payment->inventoryVoucher)->brand_name ?? 'N/A',
@@ -350,12 +402,17 @@ class PaymentController extends Controller
                 $payment->voucher_type,
                 $payment->order_id,
                 $payment->quantity,
-                number_format($payment->amount, 2),
+                number_format($saleValueLocal, 2, '.', ''),
                 $payment->bank_name ?? $payment->payment_method,
-                number_format($conversionRate, 4),
-                number_format($fxGainLoss, 2),
-                $payment->referral_points,
-                $payment->bonus_amount
+                number_format($adminRate, 6, '.', ''),
+                number_format($quotedSalesUsd, 2, '.', ''),
+                number_format($settledSalesUsd, 2, '.', ''),
+                number_format($totalPurchaseCostUsd, 2, '.', ''),
+                number_format($grossProfitUsd, 2, '.', ''),
+                number_format($gatewayFxVarianceUsd, 2, '.', ''),
+                number_format($netRealizedProfitUsd, 2, '.', ''),
+                $payment->referral_points ?? 0,
+                number_format($payment->bonus_amount ?? 0, 2, '.', '')
             ]);
         }
 

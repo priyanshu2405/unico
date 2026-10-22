@@ -12,35 +12,42 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            // Agent Specific
-            $table->string('agent_type')->nullable()->after('zip_code');
-            $table->string('business_name')->nullable()->after('agent_type');
-            $table->string('business_type')->nullable()->after('business_name');
-            $table->string('registration_number')->nullable()->after('business_type');
-            $table->string('business_contact')->nullable()->after('registration_number');
-            $table->string('business_email')->nullable()->after('business_contact');
-            $table->string('website')->nullable()->after('business_email');
-            $table->string('social_media')->nullable()->after('website');
-            $table->string('representative_name')->nullable()->after('social_media');
-            $table->string('designation')->nullable()->after('representative_name');
+            $cols = [
+                'agent_type' => 'string',
+                'business_name' => 'string',
+                'business_type' => 'string',
+                'registration_number' => 'string',
+                'business_contact' => 'string',
+                'business_email' => 'string',
+                'website' => 'string',
+                'social_media' => 'string',
+                'representative_name' => 'string',
+                'designation' => 'string',
+                'exam_purpose' => 'string',
+                'highest_education' => 'string',
+                'passing_year' => 'year',
+                'preferred_countries' => 'text',
+                'bank_name' => 'string',
+                'bank_country' => 'string',
+                'account_number' => 'string',
+                'registration_doc' => 'string',
+                'id_doc' => 'string',
+                'id_doc_final' => 'string',
+                'business_logo' => 'string',
+                'shufti_reference' => 'string',
+            ];
 
-            // Student Specific
-            $table->string('exam_purpose')->nullable()->after('designation');
-            $table->string('highest_education')->nullable()->after('exam_purpose');
-            $table->year('passing_year')->nullable()->after('highest_education');
-            $table->text('preferred_countries')->nullable()->after('passing_year');
-            
-            // Bank Details
-            $table->string('bank_name')->nullable()->after('preferred_countries');
-            $table->string('bank_country')->nullable()->after('bank_name');
-            $table->string('account_number')->nullable()->after('bank_country');
-            
-            // Uploads & Verification
-            $table->string('registration_doc')->nullable()->after('account_number');
-            $table->string('id_doc')->nullable()->after('registration_doc');
-            $table->string('id_doc_final')->nullable()->after('id_doc');
-            $table->string('business_logo')->nullable()->after('id_doc_final');
-            $table->string('shufti_reference')->nullable()->after('business_logo');
+            foreach ($cols as $name => $type) {
+                if (!Schema::hasColumn('users', $name)) {
+                    if ($type === 'year') {
+                        $table->year($name)->nullable();
+                    } elseif ($type === 'text') {
+                        $table->text($name)->nullable();
+                    } else {
+                        $table->string($name)->nullable();
+                    }
+                }
+            }
         });
     }
 

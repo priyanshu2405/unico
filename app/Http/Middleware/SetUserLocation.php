@@ -15,25 +15,32 @@ class SetUserLocation
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
-
     {
-        $ip = $request->ip(); // user IP
-        $position = Location::get($ip);
+        if (!session()->has('country_code')) {
+            $ip = $request->ip(); // user IP
+            
+            // In local development, avoid external API calls for localhost IP
+            if (app()->environment('local') && in_array($ip, ['127.0.0.1', '::1'])) {
+                $position = false;
+            } else {
+                try {
+                    $position = Location::get($ip);
+                } catch (\Exception $e) {
+                    $position = false;
+                }
+            }
 
-        // Debugging location data
-        // dd($position);
-
-        if ($position) {
-
-            session([
-                'country_code' => $position->countryCode,
-                'country_name' => $position->countryName,
-            ]);
-        } else {
-            session([
-                'country_code' => 'IN',
-                'country_name' => 'India',
-            ]);
+            if ($position) {
+                session([
+                    'country_code' => $position->countryCode,
+                    'country_name' => $position->countryName,
+                ]);
+            } else {
+                session([
+                    'country_code' => 'IN',
+                    'country_name' => 'India',
+                ]);
+            }
         }
 
         return $next($request);

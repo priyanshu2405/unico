@@ -50,13 +50,18 @@
                 <td class="text-nowrap">{{ $order->created_at->format('d-m-Y') }}</td>
                 <td class="text-center">{{ $order->quantity }}</td>
                 <td class="text-end fw-bold text-dark">
-                    {{ $order->inventoryVoucher->currency ?? $order->v_currency ?? 'N/A' }} 
-                    {{ number_format($order->amount, 2) }}
+                    @php
+                        $oCurr = $order->inventoryVoucher->currency ?? $order->v_currency ?? 'USD';
+                        $oUsd = \App\Services\CurrencyService::convertToBase($order->amount, $oCurr)['base_amount'] ?? $order->amount;
+                        $oUnitUsd = \App\Services\CurrencyService::convertToBase($order->amount / max(1, $order->quantity), $oCurr)['base_amount'] ?? ($order->amount / max(1, $order->quantity));
+                    @endphp
+                    {{ $oCurr }} {{ number_format($order->amount, 2) }}
+                    <span class="d-block small text-muted font-monospace fw-normal">(${{ number_format($oUsd, 2) }} USD)</span>
                 </td>
                 <td>{{ number_format($order->tax_amount ?? 0, 2) }}</td>
                 <td class="text-end">
-                    {{ $order->inventoryVoucher->currency ?? $order->v_currency ?? 'N/A' }} 
-                    {{ number_format($order->amount / max(1, $order->quantity), 2) }}
+                    {{ $oCurr }} {{ number_format($order->amount / max(1, $order->quantity), 2) }}
+                    <span class="d-block small text-muted font-monospace fw-normal">(${{ number_format($oUnitUsd, 2) }} USD)</span>
                 </td>
                 <td class="text-nowrap">{{ $order->created_at->format('d-m-Y') }}</td>
                 <td class="text-nowrap">

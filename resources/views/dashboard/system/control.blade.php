@@ -115,6 +115,15 @@
                         <button type="button" class="btn btn-light border btn-sm text-start py-3 px-3" onclick="document.getElementById('backup-db-form').submit();">
                             <i class="fas fa-database me-2 text-info"></i> Backup Database
                         </button>
+
+                        @if(auth()->user()->account_type === 'admin')
+                        <hr class="my-3">
+                        <p class="small text-danger fw-bold mb-2"><i class="fas fa-skull-crossbones me-1"></i> Danger Zone</p>
+                        <button type="button" class="btn btn-outline-danger btn-sm text-start py-3 px-3 w-100" data-bs-toggle="modal" data-bs-target="#purgeDataModal">
+                            <i class="fas fa-trash-alt me-2"></i> Purge All Transaction Data
+                        </button>
+                        <p class="small text-muted mt-1">Deletes all data except user accounts.</p>
+                        @endif
                     </div>
                 </div>
             </div>
@@ -144,6 +153,59 @@
 </div>
 @endsection
 
+@if(auth()->user()->account_type === 'admin')
+<!-- Purge Data Confirmation Modal -->
+<div class="modal fade" id="purgeDataModal" tabindex="-1" aria-labelledby="purgeDataModalLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-danger border-2">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="purgeDataModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i> Confirm Data Purge
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger mb-3">
+                    <strong><i class="fas fa-skull-crossbones me-1"></i> WARNING:</strong> This action is <strong>IRREVERSIBLE</strong>. It will permanently delete ALL transaction data including:
+                </div>
+                <ul class="small mb-3">
+                    <li>All orders (sales & purchases)</li>
+                    <li>Inventory/stock data</li>
+                    <li>Wallet ledger & balances (reset to 0)</li>
+                    <li>Refund requests & chats</li>
+                    <li>Disputes & support tickets</li>
+                    <li>Agent & student details</li>
+                    <li>Pricing rules, exchange rates</li>
+                    <li>Audit logs, notifications</li>
+                </ul>
+                <p class="small text-muted mb-3"><strong>User accounts will be preserved</strong> but wallet balances will be reset to ₹0.</p>
+
+                <hr>
+
+                <div class="mb-3">
+                    <label class="form-label fw-bold small">Type <code>PURGE</code> to confirm:</label>
+                    <input type="text" class="form-control" id="purge-confirm-text" placeholder="Type PURGE here" autocomplete="off">
+                </div>
+
+                <form id="purge-data-form" action="{{ route('system.control.purge-data') }}" method="POST">
+                    @csrf
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">Enter your admin password:</label>
+                        <input type="password" class="form-control" name="admin_password" id="purge-admin-password" placeholder="Your login password" required>
+                    </div>
+
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-danger fw-bold py-2" id="purge-submit-btn" disabled>
+                            <i class="fas fa-trash-alt me-2"></i> Permanently Purge All Data
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+
 @push('scripts')
 <!-- Select2 CSS/JS for beautiful multi-select -->
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -156,6 +218,31 @@
             theme: 'bootstrap-5',
             closeOnSelect: false
         });
+
+        // Purge confirmation logic
+        var confirmText = document.getElementById('purge-confirm-text');
+        var adminPassword = document.getElementById('purge-admin-password');
+        var submitBtn = document.getElementById('purge-submit-btn');
+
+        function checkPurgeReady() {
+            if (!confirmText || !adminPassword || !submitBtn) return;
+            var textOk = confirmText.value.trim() === 'PURGE';
+            var passOk = adminPassword.value.length > 0;
+            submitBtn.disabled = !(textOk && passOk);
+        }
+
+        if (confirmText) confirmText.addEventListener('input', checkPurgeReady);
+        if (adminPassword) adminPassword.addEventListener('input', checkPurgeReady);
+
+        // Reset modal on close
+        var purgeModal = document.getElementById('purgeDataModal');
+        if (purgeModal) {
+            purgeModal.addEventListener('hidden.bs.modal', function() {
+                if (confirmText) confirmText.value = '';
+                if (adminPassword) adminPassword.value = '';
+                if (submitBtn) submitBtn.disabled = true;
+            });
+        }
     });
 </script>
 <style>

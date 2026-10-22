@@ -28,7 +28,7 @@
             <div class="order-details">
                 <p><strong>Order ID:</strong> {{ $order->order_id }}</p>
                 <p><strong>Voucher:</strong> {{ $order->voucher_type }}</p>
-                <p><strong>Amount Paid:</strong> RS {{ number_format($order->amount) }}</p>
+                <p><strong>Amount Paid:</strong> {{ $order->currency ?: ($order->inventoryVoucher->currency ?? 'USD') }} {{ number_format($order->amount, 2) }}</p>
             </div>
 
             <p>Thank you for choosing UniCou! If you have any questions, feel free to contact our support team.</p>

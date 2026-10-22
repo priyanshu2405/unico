@@ -23,17 +23,31 @@
             @forelse($bank_data as $index => $record)
             <tr>
                 <td>{{ $bank_data->firstItem() + $index }}</td>
-                <td class="fw-bold text-start">{{ $record->bank_name ?? 'BNK-'.($index+100) }}</td>
-                <td>{{ $record->currency ?? 'USD' }}</td>
-                <td>{{ $record->country_region ?? 'Global' }}</td>
+                <td class="fw-bold text-start">{{ $record->bank_name }}</td>
+                <td>{{ $record->currency ?: ($record->inventoryVoucher->currency ?? 'USD') }}</td>
+                <td>
+                    @php
+                        $cr = $record->inventoryVoucher->country_region ?? 'Global';
+                        echo is_array($cr) ? implode(', ', $cr) : $cr;
+                    @endphp
+                </td>
 
-                <td>{{ $record->quantity ?? 10 }}</td>
-                <td class="text-end">{{ number_format($record->amount_transferred ?? 500, 2) }}</td>
-                <td class="text-end text-success fw-bold">{{ number_format(($record->amount_transferred ?? 500) * 1.1, 2) }}</td>
-                <td class="text-end text-danger">{{ number_format(0, 2) }}</td>
+                <td>{{ $record->quantity ?? 0 }}</td>
+                <td class="text-end">{{ number_format($record->amount ?? 0, 2) }}</td>
+                <td class="text-end text-success fw-bold">{{ number_format($record->amount ?? 0, 2) }}</td>
+                <td class="text-end text-danger">{{ number_format($refunds[$record->order_id] ?? 0, 2) }}</td>
                 <td class="text-end">{{ number_format(0, 2) }}</td>
-                <td class="text-end">1.00</td>
-                <td class="text-end">{{ number_format($record->amount_transferred ?? 500, 2) }}</td>
+                <td class="text-end">
+                    @php
+                        $rate = (float)($record->exchange_rate_applied ?? ($record->inventoryVoucher->currency_conversion_rate ?? 1.0));
+                        if ($rate <= 0) $rate = 1.0;
+                        $buyingVal = $record->amount_in_base_currency !== null 
+                            ? (float)$record->amount_in_base_currency 
+                            : ($record->amount ?? 0) * $rate;
+                    @endphp
+                    {{ number_format($rate, 4) }}
+                </td>
+                <td class="text-end fw-bold font-monospace">${{ number_format($buyingVal, 2) }}</td>
                 <td class="text-end text-success">+{{ number_format(0, 2) }}</td>
             </tr>
             @empty

@@ -15,7 +15,11 @@ class WalletLedger extends Model
         'source',
         'description',
         'ip_address',
-        'user_agent'
+        'user_agent',
+        'currency',
+        'original_amount',
+        'exchange_rate_applied',
+        'amount_usd',
     ];
 
     public $timestamps = true;

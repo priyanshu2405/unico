@@ -61,6 +61,11 @@ $isNotifications = request()->routeIs('notifications.*');
                     <i class="fas fa-university me-2"></i> Banks
                 </a>
             </li>
+            <li class="nav-item">
+                <a class="nav-link {{ request()->routeIs('settings.exchange-rates*') ? 'active' : '' }}" href="{{ route('settings.exchange-rates') }}">
+                    <i class="fas fa-coins me-2"></i> Currency Rates
+                </a>
+            </li>
             @endif
             @if(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_users))
             <li class="nav-item">
@@ -88,13 +93,19 @@ $isNotifications = request()->routeIs('notifications.*');
 
             @endif
             @if(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_view_voucher_stock) )
-            <!-- Pricing -->
-            <!-- Inventory -->
+            <!-- Purchases (InventoryVoucher-backed report) -->
             <li class="nav-item">
-                <a class="nav-link {{ request()->routeIs('pricing.index') ? 'active' : '' }}" href="{{ route('pricing.index') }}">
-                    <i class="fas fa-tags me-2"></i> Purchases
+                <a class="nav-link {{ request()->routeIs('purches.user.report') ? 'active' : '' }}" href="{{ route('purches.user.report') }}">
+                    <i class="fas fa-shopping-basket me-2"></i> Purchases
                 </a>
             </li>
+            {{-- Pricing Rules (Hidden for now)
+            <li class="nav-item">
+                <a class="nav-link {{ request()->routeIs('pricing.index') ? 'active' : '' }}" href="{{ route('pricing.index') }}">
+                    <i class="fas fa-tags me-2"></i> Pricing Rules
+                </a>
+            </li>
+            --}}
             <li class="nav-item">
                 <a class="nav-link {{ request()->routeIs('inventory.index') ? 'active' : '' }}" href="{{ route('inventory.index') }}">
                     <i class="fas fa-boxes me-2"></i>Stocks upload
@@ -189,6 +200,28 @@ $isNotifications = request()->routeIs('notifications.*');
             </li> -->
 
             <!-- Settings -->
+            <li class="nav-item">
+                <a class="nav-link d-flex justify-content-between align-items-center {{ request()->routeIs('settings.*') ? 'active' : '' }}" data-bs-toggle="collapse" href="#sidebarSettings" role="button" aria-expanded="{{ request()->routeIs('settings.*') ? 'true' : 'false' }}">
+                    <span><i class="fas fa-cog me-2"></i> Settings</span>
+                    <i class="fas fa-chevron-down small"></i>
+                </a>
+                <div class="collapse {{ request()->routeIs('settings.*') ? 'show' : '' }}" id="sidebarSettings">
+                    <ul class="nav flex-column ps-3 mt-1 gap-1">
+                        @if(auth()->user()->isAdmin())
+                        <li class="nav-item">
+                            <a class="nav-link py-2 {{ request()->routeIs('settings.exchange-rates*') ? 'active text-primary fw-bold' : '' }}" href="{{ route('settings.exchange-rates') }}">
+                                <i class="fas fa-coins me-2 text-warning"></i> Currency Rates
+                            </a>
+                        </li>
+                        @endif
+                        <li class="nav-item">
+                            <a class="nav-link py-2 {{ request()->routeIs('settings.risk-levels*') ? 'active text-primary fw-bold' : '' }}" href="{{ route('settings.risk-levels') }}">
+                                <i class="fas fa-globe me-2 text-info"></i> Country Risk Levels
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </li>
 
             @endif
             @if(auth()->user()->isAgent() || auth()->user()->isStudent() || auth()->user()->isResellerAgent())
@@ -219,12 +252,6 @@ $isNotifications = request()->routeIs('notifications.*');
             <li class="nav-item">
                 <a class="nav-link {{ request()->routeIs('disputes.ratings') ? 'active' : '' }}" href="{{ route('disputes.ratings') }}">
                     <i class="fas fa-star me-2"></i> Staff Ratings
-                </a>
-            </li>
-
-            <li class="nav-item">
-                <a class="nav-link {{ request()->routeIs('settings.risk-levels') ? 'active' : '' }}" href="{{ route('settings.risk-levels') }}">
-                    <i class="fas fa-globe me-2"></i> Country Risk Levels
                 </a>
             </li>
             @endif

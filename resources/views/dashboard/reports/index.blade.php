@@ -59,7 +59,7 @@
                         <h5 class="fw-bold mb-0">Purches Report</h5>
                     </div>
                     <p class="text-muted small">View detailed reports of purchased vouchers and current stock levels by PID and voucher type.</p>
-                    <a href="{{ route('pricing.index') }}" class="btn btn-primary w-100">View Report</a>
+                    <a href="{{ route('purches.user.report') }}" class="btn btn-primary w-100">View Report</a>
                 </div>
             </div>
         </div>

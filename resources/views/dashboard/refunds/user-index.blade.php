@@ -80,7 +80,7 @@
                                 <div class="text-dark small">{{ $refund->created_at->format('d M Y') }}</div>
                             </td>
                             <td><span class="fw-bold">{{ $refund->order_id }}</span></td>
-                            <td><span class="fw-bold text-primary">RS {{ number_format($refund->amount) }}</span></td>
+                            <td><span class="fw-bold text-primary">{{ $refund->order->currency ?? 'USD' }} {{ number_format($refund->amount, 2) }}</span></td>
                             <td><div class="text-muted small">{{ Str::limit($refund->reason, 40) }}</div></td>
                             <td>
                                 @if($refund->status == 'approved')
@@ -142,7 +142,7 @@
                                 data-amount="{{ $order->amount }}" 
                                 data-method="{{ $order->payment_method }}"
                                 data-trx="{{ $order->transaction_id }}">
-                                {{ $order->order_id }} - RS {{ number_format($order->amount) }} ({{ ucfirst($order->payment_method) }})
+                                {{ $order->order_id }} - {{ $order->currency ?? 'USD' }} {{ number_format($order->amount, 2) }} ({{ ucfirst($order->payment_method) }})
                             </option>
                             @endforeach
                         </select>
@@ -155,7 +155,7 @@
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label small fw-bold text-muted text-uppercase">Refund Amount (RS)</label>
+                        <label class="form-label small fw-bold text-muted text-uppercase">Refund Amount</label>
                         <input type="number" name="amount" id="refund_amount" class="form-control border-0 bg-light p-3" placeholder="Amount to be refunded..." style="border-radius: 12px;" required readonly>
                     </div>
                     <div class="mb-3">

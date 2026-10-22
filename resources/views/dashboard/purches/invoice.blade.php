@@ -80,8 +80,8 @@
                     <div class="row justify-content-end mt-4">
                         <div class="col-md-5 col-lg-4">
                             <div class="d-flex justify-content-between mb-2">
-                                <span class="text-muted">Subtotal:</span>
-                                <span>{{$order->inventoryVoucher->currency ?? 'N/A' }} {{ number_format($order->amount, 2) }}</span>
+                                <span class="text-muted">Subtotal (Net):</span>
+                                <span>{{ $order->inventoryVoucher->currency ?? 'N/A' }} {{ number_format(max(0, $order->amount - ($order->tax_amount ?? 0)), 2) }}</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2">
                                 <span class="text-muted">Tax:</span>

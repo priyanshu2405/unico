@@ -66,6 +66,22 @@ class CountryHelper
                 'id_placeholder' => 'Enter Emirates ID',
                 'banks' => ['Emirates NBD', 'ADCB', 'First Abu Dhabi Bank', 'Mashreq Bank']
             ],
+            'GB' => [
+                'currency' => 'GBP',
+                'currency_symbol' => '£',
+                'flag' => 'gb',
+                'id_label' => 'National Insurance / Passport',
+                'id_placeholder' => 'Enter ID Number',
+                'banks' => ['Barclays', 'HSBC', 'Lloyds Bank', 'NatWest']
+            ],
+            'US' => [
+                'currency' => 'USD',
+                'currency_symbol' => '$',
+                'flag' => 'us',
+                'id_label' => 'SSN / State ID',
+                'id_placeholder' => 'Enter ID Number',
+                'banks' => ['Chase', 'Bank of America', 'Wells Fargo', 'Citibank']
+            ],
             'DEFAULT' => [
                 'currency' => 'USD',
                 'currency_symbol' => '$',

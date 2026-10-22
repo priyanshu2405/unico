@@ -7,8 +7,10 @@ use App\Models\User;
 use App\Models\Vouchar;
 use App\Models\InventoryVoucher;
 use App\Models\Order;
+use App\Services\CurrencyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
@@ -49,13 +51,14 @@ class DashboardController extends Controller
                 ->first();
 
             $stats = [
-                'total_users' => User::count(),
-                'agents' => User::where('account_type', 'reseller_agent')->count(),
+                'total_users' => User::where('account_type', '!=', 'admin')->count(),
+                'agents' => User::where('account_type', 'agent')->count(),
+                'reseller_agents' => User::where('account_type', 'reseller_agent')->count(),
                 'students' => User::where('account_type', 'student')->count(),
                 'pending_approvals' => User::where('profile_verification_status', 'pending')->count(),
                 'total_vouchers' => InventoryVoucher::sum('quantity'),
                 'total_sales' => Order::where('status', 'delivered')->count(),
-                'total_revenue' => Order::where('status', 'delivered')->sum('amount'),
+                'total_revenue' => Order::where('status', 'delivered')->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o)),
                 'total_referral_points' => Order::sum('referral_points'),
                 'total_bonus_points' => Order::sum('bonus_amount'),
                 'top_brand' => $topBrand ? $topBrand->brand_name : 'N/A',
@@ -96,13 +99,14 @@ class DashboardController extends Controller
                 ->first();
 
             $stats = [
-                'total_users' => User::count(),
-                'agents' => User::where('account_type', 'reseller_agent')->count(),
+                'total_users' => User::where('account_type', '!=', 'admin')->count(),
+                'agents' => User::where('account_type', 'agent')->count(),
+                'reseller_agents' => User::where('account_type', 'reseller_agent')->count(),
                 'students' => User::where('account_type', 'student')->count(),
                 'pending_approvals' => User::where('profile_verification_status', 'pending')->count(),
                 'total_vouchers' => InventoryVoucher::sum('quantity'),
                 'total_sales' => Order::where('status', 'delivered')->count(),
-                'total_revenue' => Order::where('status', 'delivered')->sum('amount'),
+                'total_revenue' => Order::where('status', 'delivered')->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o)),
                 'total_referral_points' => Order::sum('referral_points'),
                 'total_bonus_points' => Order::sum('bonus_amount'),
                 'top_brand' => $topBrand ? $topBrand->brand_name : 'N/A',
@@ -114,8 +118,9 @@ class DashboardController extends Controller
         }
 
         if ($user->isResellerAgent()) {
-            $topSellingBrands = Order::where('orders.user_id', $user->id)
-                ->where('orders.status', 'delivered')
+            $networkQuery = $user->getResellerNetworkOrdersQuery()->where('orders.status', 'delivered');
+
+            $topSellingBrands = (clone $networkQuery)
                 ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
                 ->select('inventory_vouchers.brand_name', \DB::raw('count(*) as total'))
                 ->groupBy('inventory_vouchers.brand_name')
@@ -123,29 +128,56 @@ class DashboardController extends Controller
                 ->limit(3)
                 ->get();
                 
-            $topSellingVariant = Order::where('orders.user_id', $user->id)
-                ->where('orders.status', 'delivered')
+            $topSellingVariant = (clone $networkQuery)
                 ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
                 ->select('inventory_vouchers.voucher_variant', \DB::raw('count(*) as total'))
                 ->groupBy('inventory_vouchers.voucher_variant')
                 ->orderBy('total', 'desc')
                 ->first();
 
-            $totalPurchaseAmount = Order::where('user_id', $user->id)
-                ->where('status', 'delivered')
-                ->sum('amount');
-            
-            $totalVouchersPurchased = Order::where('user_id', $user->id)
-                ->where('status', 'delivered')
-                ->sum('quantity');
+            // Combined Network Purchase Amount (Reseller + all Sub-Agents/Students) converted to user currency
+            $userCurrency = $user->currency ?? 'USD';
+            $usdToUserRate = CurrencyService::getExchangeRate('USD', $userCurrency);
 
-           // New stats including sub-agents
-            $totalReferralPoints = $user->total_referral_points;
-            $totalBonusPoints = $user->total_bonus_points;
+            $totalPurchaseBase = (clone $networkQuery)->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o));
+            $directPurchaseBase = Order::where('user_id', $user->id)->where('status', 'delivered')->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o));
+
+            $totalPurchaseAmount = round((float)$totalPurchaseBase * $usdToUserRate, 2);
+            $directPurchaseAmount = round((float)$directPurchaseBase * $usdToUserRate, 2);
+            $subAgentPurchaseAmount = max(0.0, round($totalPurchaseAmount - $directPurchaseAmount, 2));
+            
+            // Combined Network Vouchers Purchased (Reseller + all Sub-Agents/Students)
+            $totalVouchersPurchased = (clone $networkQuery)->sum('quantity');
+            $directVouchersPurchased = Order::where('user_id', $user->id)->where('status', 'delivered')->sum('quantity');
+            $subAgentVouchersPurchased = max(0, (int)($totalVouchersPurchased - $directVouchersPurchased));
+
+            // Referral and bonus points
+            $totalReferralPoints = Order::where(function($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                      ->orWhere('sub_agent_id', $user->id)
+                      ->orWhereHas('user', function ($qu) use ($user) {
+                          $qu->where('sub_agent_id', $user->id);
+                      });
+                })
+                ->where('status', 'delivered')
+                ->sum('referral_points');
+
+            $totalBonusPoints = Order::where(function($q) use ($user) {
+                    $q->where('user_id', $user->id)
+                      ->orWhere('sub_agent_id', $user->id)
+                      ->orWhereHas('user', function ($qu) use ($user) {
+                          $qu->where('sub_agent_id', $user->id);
+                      });
+                })
+                ->where('status', 'delivered')
+                ->sum('bonus_amount');
 
             $referralPointsHistory = Order::where(function($q) use ($user) {
                     $q->where('user_id', $user->id)
-                      ->orWhere('sub_agent_id', $user->id);
+                      ->orWhere('sub_agent_id', $user->id)
+                      ->orWhereHas('user', function ($qu) use ($user) {
+                          $qu->where('sub_agent_id', $user->id);
+                      });
                 })
                 ->where('status', 'delivered')
                 ->where('referral_points', '>', 0)
@@ -155,7 +187,10 @@ class DashboardController extends Controller
 
             $bonusPointsHistory = Order::where(function($q) use ($user) {
                     $q->where('user_id', $user->id)
-                      ->orWhere('sub_agent_id', $user->id);
+                      ->orWhere('sub_agent_id', $user->id)
+                      ->orWhereHas('user', function ($qu) use ($user) {
+                          $qu->where('sub_agent_id', $user->id);
+                      });
                 })
                 ->where('status', 'delivered')
                 ->where('bonus_amount', '>', 0)
@@ -163,15 +198,45 @@ class DashboardController extends Controller
                 ->limit(5)
                 ->get();
 
+            // Fetch connected sub-agents & students with their performance statistics
+            $connectedUsers = User::where('sub_agent_id', $user->id)
+                ->withCount(['orders as delivered_orders_count' => function ($q) {
+                    $q->where('status', 'delivered');
+                }])
+                ->withSum(['orders as delivered_vouchers_qty' => function ($q) {
+                    $q->where('status', 'delivered');
+                }], 'quantity')
+                ->latest()
+                ->get();
+
+            foreach ($connectedUsers as $u) {
+                $baseSum = $u->orders()->where('status', 'delivered')->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o));
+                $u->delivered_orders_base_sum = $baseSum;
+                $u->delivered_orders_sum = round($baseSum * $usdToUserRate, 2);
+            }
+
+            $connectedAgentsCount = $connectedUsers->where('account_type', 'agent')->count();
+            $connectedStudentsCount = $connectedUsers->where('account_type', 'student')->count();
+
+            $userCurrency = $user->currency;
+
             return view('dashboard.reseller_dashboard', compact(
                 'topSellingBrands', 
                 'topSellingVariant', 
                 'totalPurchaseAmount', 
-                'totalVouchersPurchased',
-                'totalReferralPoints',
-                'totalBonusPoints',
-                'referralPointsHistory',
-                'bonusPointsHistory'
+                'directPurchaseAmount',
+                'subAgentPurchaseAmount',
+                'totalVouchersPurchased', 
+                'directVouchersPurchased',
+                'subAgentVouchersPurchased',
+                'totalReferralPoints', 
+                'totalBonusPoints', 
+                'referralPointsHistory', 
+                'bonusPointsHistory',
+                'connectedUsers',
+                'connectedAgentsCount',
+                'connectedStudentsCount',
+                'userCurrency'
             ));
         }
 
@@ -193,15 +258,19 @@ class DashboardController extends Controller
                 ->orderBy('total', 'desc')
                 ->first();
 
-            $totalPurchaseAmount = Order::where('user_id', $user->id)
+            $userCurrency = $user->currency ?? 'USD';
+            $usdToUserRate = CurrencyService::getExchangeRate('USD', $userCurrency);
+            $directPurchaseBase = Order::where('user_id', $user->id)
                 ->where('status', 'delivered')
-                ->sum('amount');
+                ->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o));
+
+            $totalPurchaseAmount = round((float)$directPurchaseBase * $usdToUserRate, 2);
             
             $totalVouchersPurchased = Order::where('user_id', $user->id)
                 ->where('status', 'delivered')
                 ->sum('quantity');
 
-            return view('dashboard.agent_dashboard', compact('topSellingBrands', 'topSellingVariant', 'totalPurchaseAmount', 'totalVouchersPurchased'));
+            return view('dashboard.agent_dashboard', compact('topSellingBrands', 'topSellingVariant', 'totalPurchaseAmount', 'totalVouchersPurchased', 'userCurrency'));
         }
 
         if ($user->isStudent()) {
@@ -220,35 +289,24 @@ class DashboardController extends Controller
                 ->orderBy('total', 'desc')
                 ->first();
 
-            // Graph Data for Student (Revenue/Purchases)
-            $dailyPurchases = Order::where('user_id', $user->id)
+            $userCurrency = $user->currency ?? 'USD';
+            $usdToUserRate = CurrencyService::getExchangeRate('USD', $userCurrency);
+            $directPurchaseBase = Order::where('user_id', $user->id)
                 ->where('status', 'delivered')
-                ->where('created_at', '>=', now()->subDays(7))
-                ->select(\DB::raw('DATE(created_at) as date'), \DB::raw('SUM(amount) as total_revenue'), \DB::raw('COUNT(*) as total_orders'))
-                ->groupBy('date')
-                ->get();
+                ->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o));
 
-            $monthlyPurchases = Order::where('user_id', $user->id)
-                ->where('status', 'delivered')
-                ->where('created_at', '>=', now()->subMonths(12))
-                ->select(\DB::raw('MONTHNAME(created_at) as month'), \DB::raw('SUM(amount) as total_revenue'), \DB::raw('COUNT(*) as total_orders'))
-                ->groupBy('month')
-                ->get();
-
-            $totalPurchaseAmount = Order::where('user_id', $user->id)
-                ->where('status', 'delivered')
-                ->sum('amount');
+            $totalPurchaseAmount = round((float)$directPurchaseBase * $usdToUserRate, 2);
             
             $totalVouchersPurchased = Order::where('user_id', $user->id)
                 ->where('status', 'delivered')
                 ->sum('quantity');
 
-            return view('dashboard.student_dashboard', compact('topSellingBrands', 'topSellingVariant', 'totalPurchaseAmount', 'totalVouchersPurchased'));
+            return view('dashboard.student_dashboard', compact('topSellingBrands', 'topSellingVariant', 'totalPurchaseAmount', 'totalVouchersPurchased', 'userCurrency'));
         }
 
         if ($user->isSupport()) {
             $stats = [
-                'total_users' => User::count(),
+                'total_users' => User::where('account_type', '!=', 'admin')->count(),
                 'pending_approvals' => User::where('profile_verification_status', 'pending')->count(),
                 'students' => User::where('account_type', 'student')->count(),
                 'active_vouchers' => InventoryVoucher::sum('quantity'),
@@ -260,7 +318,7 @@ class DashboardController extends Controller
                 ->first();
 
             $stats['rating_count'] = $disputeStats->count ?? 0;
-            $stats['rating_percentage'] = $disputeStats->avg_rating ? round(($disputeStats->avg_rating / 5) * 100) : 0;
+            $stats['rating_percentage'] = $disputeStats->avg_rating ? min(100, max(0, round(($disputeStats->avg_rating / 5) * 100))) : 0;
 
             return view('dashboard.support_dashboard', compact('stats'));
         }
@@ -388,43 +446,54 @@ class DashboardController extends Controller
         $user = auth()->user();
         $query = Order::where('status', 'delivered');
 
-        // If not admin/manager, only show their own data
-        if (!$user->isAdmin() && !$user->isManager() && !$user->isSupport()) {
-            $query->where('user_id', $user->id);
+        // If not admin/manager, only show their own data or reseller network data
+        $isManagement = ($user->isAdmin() || $user->isManager() || $user->isSupport());
+        if (!$isManagement) {
+            if ($user->isResellerAgent()) {
+                $query->where(function ($q) use ($user) {
+                    $q->where('orders.user_id', $user->id)
+                      ->orWhere('orders.sub_agent_id', $user->id)
+                      ->orWhereHas('user', function ($qu) use ($user) {
+                          $qu->where('sub_agent_id', $user->id);
+                      });
+                });
+            } else {
+                $query->where('orders.user_id', $user->id);
+            }
         }
 
         switch ($type) {
             case 'Daily':
-                $data = $query->where('created_at', '>=', now()->subDays(30))
-                    ->select(\DB::raw('DATE(created_at) as label'), \DB::raw('SUM(amount) as revenue'), \DB::raw('SUM(quantity) as vouchers'))
-                    ->groupBy('label')
-                    ->orderBy('label')
-                    ->get();
+                $orders = $query->where('created_at', '>=', now()->subDays(30))->get();
+                $grouped = $orders->groupBy(fn($o) => $o->created_at->format('Y-m-d'));
                 break;
             case 'Weekly':
-                $data = $query->where('created_at', '>=', now()->subWeeks(12))
-                    ->select(\DB::raw('YEARWEEK(created_at) as label'), \DB::raw('SUM(amount) as revenue'), \DB::raw('SUM(quantity) as vouchers'))
-                    ->groupBy('label')
-                    ->orderBy('label')
-                    ->get();
+                $orders = $query->where('created_at', '>=', now()->subWeeks(12))->get();
+                $grouped = $orders->groupBy(fn($o) => 'Week ' . $o->created_at->format('W, Y'));
                 break;
             case 'Monthly':
-                $data = $query->where('created_at', '>=', now()->subMonths(12))
-                    ->select(\DB::raw('DATE_FORMAT(created_at, "%b %Y") as label'), \DB::raw('SUM(amount) as revenue'), \DB::raw('SUM(quantity) as vouchers'))
-                    ->groupBy(\DB::raw('YEAR(created_at), MONTH(created_at), label'))
-                    ->orderBy(\DB::raw('YEAR(created_at), MONTH(created_at)'))
-                    ->get();
+                $orders = $query->where('created_at', '>=', now()->subMonths(12))->get();
+                $grouped = $orders->groupBy(fn($o) => $o->created_at->format('M Y'));
                 break;
             case 'Yearly':
-                $data = $query->where('created_at', '>=', now()->subYears(5))
-                    ->select(\DB::raw('YEAR(created_at) as label'), \DB::raw('SUM(amount) as revenue'), \DB::raw('SUM(quantity) as vouchers'))
-                    ->groupBy('label')
-                    ->orderBy('label')
-                    ->get();
+                $orders = $query->where('created_at', '>=', now()->subYears(5))->get();
+                $grouped = $orders->groupBy(fn($o) => $o->created_at->format('Y'));
                 break;
             default:
                 return response()->json(['error' => 'Invalid type'], 400);
         }
+
+        $targetCurrency = $isManagement ? 'USD' : ($user->currency ?? 'USD');
+        $rateToTarget = CurrencyService::getExchangeRate('USD', $targetCurrency);
+
+        $data = $grouped->map(function ($items, $label) use ($rateToTarget) {
+            $baseRevenue = $items->sum(fn($o) => CurrencyService::getOrderBaseAmount($o));
+            return [
+                'label' => $label,
+                'revenue' => round($baseRevenue * $rateToTarget, 2),
+                'vouchers' => (int)$items->sum('quantity'),
+            ];
+        })->sortKeys()->values();
 
         return response()->json($data);
     }

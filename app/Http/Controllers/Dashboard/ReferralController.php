@@ -102,6 +102,9 @@ class ReferralController extends Controller
 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
 
         fputcsv($handle, ['S.No', 'Order ID', 'Brand', 'Voucher', 'Amount', 'Date', 'Points', 'Status']);
 

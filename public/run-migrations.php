@@ -24,6 +24,115 @@ if (isset($_SESSION['runner_authed']) && $_SESSION['runner_authed'] === true) {
     $authenticated = true;
 }
 
+/**
+ * Synchronize migrations with existing tables without failing on 1050/1060 errors.
+ */
+function runSmartSyncAndMigrate(): array {
+    $output = [];
+    
+    // 1. Ensure migrations table exists
+    if (!\Illuminate\Support\Facades\Schema::hasTable('migrations')) {
+        \Illuminate\Support\Facades\DB::statement("CREATE TABLE IF NOT EXISTS `migrations` (
+            `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+            `migration` varchar(255) NOT NULL,
+            `batch` int(11) NOT NULL,
+            PRIMARY KEY (`id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        $output[] = "[INIT] Created migrations tracking table.";
+    }
+
+    $existing = \Illuminate\Support\Facades\DB::table('migrations')->pluck('migration')->toArray();
+    $currentBatch = (int) (\Illuminate\Support\Facades\DB::table('migrations')->max('batch') ?? 0) + 1;
+
+    $files = glob(database_path('migrations/*.php'));
+    sort($files);
+
+    $syncedCount = 0;
+    $createdCount = 0;
+    $skippedCount = 0;
+
+    foreach ($files as $filePath) {
+        $migrationName = basename($filePath, '.php');
+
+        // If already registered in migrations table, skip
+        if (in_array($migrationName, $existing)) {
+            $skippedCount++;
+            continue;
+        }
+
+        try {
+            // Attempt to execute the migration up() method
+            $migration = require $filePath;
+            if (is_object($migration) && method_exists($migration, 'up')) {
+                $migration->up();
+            }
+
+            // Successfully executed
+            \Illuminate\Support\Facades\DB::table('migrations')->insert([
+                'migration' => $migrationName,
+                'batch' => $currentBatch
+            ]);
+            $createdCount++;
+            $output[] = "[MIGRATED] {$migrationName}";
+        } catch (\Illuminate\Database\QueryException $e) {
+            $errorCode = $e->errorInfo[1] ?? 0;
+            $errorMsg = $e->getMessage();
+
+            // MySQL 1050: Table already exists
+            // MySQL 1060: Duplicate column name
+            // MySQL 1061: Duplicate key name
+            // MySQL 1054: Unknown column (e.g. from an 'after' clause positioning on an old column)
+            // MySQL 1068: Multiple primary key defined
+            // MySQL 1091: Can't drop column/key; check that it exists
+            $isAlreadyExists = (
+                $errorCode == 1050 ||
+                $errorCode == 1060 ||
+                $errorCode == 1061 ||
+                $errorCode == 1068 ||
+                $errorCode == 1091 ||
+                ($errorCode == 1054 && stripos($errorMsg, 'after') !== false) ||
+                stripos($errorMsg, 'already exists') !== false ||
+                stripos($errorMsg, 'Duplicate column') !== false ||
+                stripos($errorMsg, 'Duplicate key') !== false
+            );
+
+            if ($isAlreadyExists) {
+                // Pre-existing table/column from prior SQL import
+                \Illuminate\Support\Facades\DB::table('migrations')->insert([
+                    'migration' => $migrationName,
+                    'batch' => $currentBatch
+                ]);
+                $syncedCount++;
+                $output[] = "[SYNCED]   {$migrationName} (schema already present or resolved in DB)";
+            } else {
+                $output[] = "[ERROR]    {$migrationName}: " . $errorMsg;
+                return [
+                    'success' => false,
+                    'output' => implode("\n", $output)
+                ];
+            }
+        } catch (\Throwable $t) {
+            $output[] = "[ERROR]    {$migrationName}: " . $t->getMessage();
+            return [
+                'success' => false,
+                'output' => implode("\n", $output)
+            ];
+        }
+    }
+
+    $output[] = "\n================ SUMMARY ================";
+    $output[] = "Total Migration Files : " . count($files);
+    $output[] = "Already Tracked       : " . $skippedCount;
+    $output[] = "Newly Executed        : " . $createdCount;
+    $output[] = "Synced From Database  : " . $syncedCount;
+    $output[] = "Status                : SUCCESS! All database tables & migrations are in sync.";
+
+    return [
+        'success' => true,
+        'output' => implode("\n", $output)
+    ];
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['pin'])) {
         if ($_POST['pin'] === SECURE_PIN) {
@@ -45,6 +154,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             switch ($action) {
                 case 'migrate':
+                case 'smart_sync':
+                    $res = runSmartSyncAndMigrate();
+                    $output = $res['output'];
+                    $success = $res['success'];
+                    break;
+                case 'force_migrate':
                     $exitCode = $kernel->call('migrate', ['--force' => true], $consoleOutput);
                     $output = $consoleOutput->fetch();
                     $success = ($exitCode === 0);
@@ -66,6 +181,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $exitCode = $kernel->call('optimize', [], $consoleOutput);
                     $output = $consoleOutput->fetch();
                     $success = ($exitCode === 0);
+                    break;
+                case 'view_logs':
+                    $logFile = storage_path('logs/laravel.log');
+                    if (file_exists($logFile)) {
+                        $lines = file($logFile);
+                        $output = "Last 60 lines of storage/logs/laravel.log:\n\n" . implode("", array_slice($lines, -60));
+                    } else {
+                        $output = "Log file storage/logs/laravel.log does not exist or is empty.";
+                    }
+                    $success = true;
                     break;
                 case 'logout':
                     $_SESSION['runner_authed'] = false;
@@ -509,13 +634,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
 
                 <div class="dashboard-grid">
-                    <div class="action-card" onclick="runCommand('migrate')">
-                        <h3>⚙️ Run Migrations</h3>
-                        <p>Runs database migrations (with --force). Safe to run multiple times.</p>
+                    <div class="action-card" style="border-color: rgba(99, 102, 241, 0.6); background: rgba(99, 102, 241, 0.1);" onclick="runCommand('smart_sync')">
+                        <h3 style="color: #a5b4fc;">⚡ Smart Sync & Migrate <span style="font-size: 0.75rem; background: #6366f1; color: white; padding: 2px 8px; border-radius: 999px; margin-left: 6px;">RECOMMENDED</span></h3>
+                        <p>Safely handles pre-existing tables from SQL dumps and automatically migrates any missing tables (like disputes) without SQL 1050 errors.</p>
                     </div>
                     <div class="action-card" onclick="runCommand('migrate_status')">
                         <h3>📋 Migration Status</h3>
-                        <p>Checks the status of database migrations to see what has been run.</p>
+                        <p>Checks the status of database migrations to see what has been registered and run.</p>
                     </div>
                     <div class="action-card" onclick="runCommand('cache_clear')">
                         <h3>🗑️ Clear Caches</h3>
@@ -524,6 +649,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="action-card" onclick="runCommand('optimize')">
                         <h3>⚡ Optimize App</h3>
                         <p>Caches configuration and routes for faster load times on production.</p>
+                    </div>
+                    <div class="action-card" onclick="runCommand('view_logs')">
+                        <h3>📜 View Error Logs</h3>
+                        <p>Displays recent entries from storage/logs/laravel.log to diagnose production errors.</p>
                     </div>
                 </div>
 

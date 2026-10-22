@@ -123,14 +123,14 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between mb-2">
                         <span class="text-muted small">Daily Revenue</span>
-                        <span class="fw-bold small">€1,240.00</span>
+                        <span class="fw-bold small">$1,240.00</span>
                     </div>
                     <div class="progress mb-3" style="height: 8px;">
                         <div class="progress-bar bg-success" role="progressbar" style="width: 75%"></div>
                     </div>
                     <div class="d-flex justify-content-between mb-2">
                         <span class="text-muted small">Monthly Revenue</span>
-                        <span class="fw-bold small">€28,450.00</span>
+                        <span class="fw-bold small">$28,450.00</span>
                     </div>
                     <div class="progress" style="height: 8px;">
                         <div class="progress-bar bg-primary" role="progressbar" style="width: 60%"></div>

@@ -43,7 +43,10 @@
                     </div>
                 </td>
                 <td>
-                    <span class="fw-bold text-primary">RS {{ number_format($order->amount) }}</span>
+                    <span class="fw-bold text-primary">{{ $order->currency ?: ($order->inventoryVoucher->currency ?? 'USD') }} {{ number_format($order->amount, 2) }}</span>
+                    @if(($order->currency && $order->currency !== 'USD') || ($order->amount_in_base_currency && $order->amount_in_base_currency != $order->amount))
+                        <div class="small text-muted font-monospace">(${{ number_format($order->amount_in_base_currency, 2) }} USD)</div>
+                    @endif
                 </td>
                 <td>
                     @if($order->status == 'delivered')

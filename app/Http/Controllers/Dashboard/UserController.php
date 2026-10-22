@@ -51,7 +51,15 @@ class UserController extends Controller
         }
 
         if ($request->has('verification_status') && $request->verification_status != 'all' && $request->verification_status != '') {
-            $query->where('profile_verification_status', $request->verification_status);
+            if ($request->verification_status === 'pending') {
+                $query->where(function ($q) {
+                    $q->where('profile_verification_status', 'pending')
+                        ->orWhereNull('profile_verification_status')
+                        ->orWhere('profile_verification_status', '');
+                });
+            } else {
+                $query->where('profile_verification_status', $request->verification_status);
+            }
         }
 
         if ($request->has('flags') && $request->flags != 'all' && $request->flags != '') {
@@ -81,6 +89,8 @@ class UserController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('first_name', 'like', "%{$search}%")
                     ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhere('name', 'like', "%{$search}%")
+                    ->orWhereRaw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) like ?", ["%{$search}%"])
                     ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%")
                     ->orWhere('user_id', 'like', "%{$search}%");
@@ -145,7 +155,7 @@ class UserController extends Controller
         }
 
         $userData = [
-            'user_id' => User::generateNextUserId($request->account_type),
+            'user_id' => User::generateNextUserId($request->account_type, $countryIso ?? 'IN'),
             'first_name' => $request->first_name,
             'name' => $request->first_name,
             'email' => $request->email,
@@ -541,6 +551,9 @@ class UserController extends Controller
 
         header('Content-Type: text/csv');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0');
+        header('Pragma: no-cache');
+        header('Expires: 0');
 
         fputcsv($handle, ['User ID', 'Name', 'Email', 'Role', 'Phone', 'Country', 'Status', 'Verification', 'Registered Date']);
 
@@ -574,6 +587,43 @@ class UserController extends Controller
             $query->whereNotIn('account_type', ['admin', 'manager', 'support_team']);
         }
 
+        if ($request->has('role') && $request->role != 'all' && $request->role != '') {
+            $query->where('account_type', $request->role);
+        }
+
+        if ($request->has('status') && $request->status != 'all' && $request->status != '') {
+            $query->where('is_active', $request->status);
+        }
+
+        if ($request->has('verification_status') && $request->verification_status != 'all' && $request->verification_status != '') {
+            $query->where('profile_verification_status', $request->verification_status);
+        }
+
+        if ($request->has('country') && $request->country != 'all' && $request->country != '') {
+            $query->where('country', $request->country);
+        }
+        if ($request->has('state') && $request->state != 'all' && $request->state != '') {
+            $query->where('state', $request->state);
+        }
+
+        if ($request->has('from_date') && $request->from_date != '') {
+            $query->whereDate('created_at', '>=', $request->from_date);
+        }
+        if ($request->has('to_date') && $request->to_date != '') {
+            $query->whereDate('created_at', '<=', $request->to_date);
+        }
+
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhere('user_id', 'like', "%{$search}%");
+            });
+        }
+
         $users = $query->latest()->get();
         $filename = "Customers_Detail_Report_" . date('Y-m-d_H-i-s') . ".csv";
 
@@ -581,7 +631,7 @@ class UserController extends Controller
             "Content-type"        => "text/csv",
             "Content-Disposition" => "attachment; filename=$filename",
             "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Cache-Control"       => "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0",
             "Expires"             => "0"
         ];
 
@@ -612,7 +662,7 @@ class UserController extends Controller
                     $user->country,
                     $user->state,
                     $user->city,
-                    $user->zip_code,
+                    $user->post_code ?? $user->zip_code ?? '',
                     $user->address,
                     $user->dob,
                     $user->id_type,
@@ -833,7 +883,31 @@ class UserController extends Controller
 
     private function exportRoleCSV($role, $request)
     {
+        $authUser = auth()->user();
+        if (!$authUser) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        // Authorization checks matching page views
+        if (in_array($role, ['manager', 'support_team', 'reseller_agent'])) {
+            if (!($authUser->isAdmin() || $authUser->can_view_users)) {
+                return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
+            }
+        } elseif (in_array($role, ['agent', 'student'])) {
+            if (!($authUser->isAdmin() || $authUser->can_view_users || $authUser->isResellerAgent())) {
+                return redirect()->route('dashboard')->with('error', 'Unauthorized action.');
+            }
+        }
+
         $query = User::where('account_type', $role);
+
+        // Scope to connected sub-agents / students if authenticated user is a reseller agent
+        if ($authUser->account_type === 'reseller_agent') {
+            if ($role === 'student' && !$authUser->can_view_all_countries && !empty($authUser->permitted_countries)) {
+                $query->whereIn('country', $authUser->permitted_countries);
+            }
+            $query->where('sub_agent_id', $authUser->id);
+        }
 
         if ($request->has('status') && $request->status != 'all' && $request->status != '') {
             $query->where('is_active', $request->status);
@@ -851,6 +925,23 @@ class UserController extends Controller
         }
         if ($request->has('to_date') && $request->to_date != '') {
             $query->whereDate('created_at', '<=', $request->to_date);
+        }
+
+        if ($request->has('time') && $request->time != '') {
+            $query->whereTime('last_login_at', $request->time);
+        }
+        if ($request->has('from_time') && $request->from_time != '') {
+            $query->whereTime('last_login_at', '>=', $request->from_time);
+        }
+        if ($request->has('to_time') && $request->to_time != '') {
+            $query->whereTime('last_login_at', '<=', $request->to_time);
+        }
+
+        if ($request->has('rating') && $request->rating != 'all' && $request->rating != '') {
+            $query->where('rating', '>=', $request->rating);
+        }
+        if ($request->has('category') && $request->category != 'all' && $request->category != '') {
+            $query->where('category', $request->category);
         }
 
         if ($role === 'student') {
@@ -873,78 +964,90 @@ class UserController extends Controller
         }
 
         if ($role === 'student') {
-            $users = $query->withCount(['orders as orders_count' => function ($q) {
+            $users = $query->withCount([
+                'orders as orders_count' => function ($q) {
+                    $q->where('status', 'delivered');
+                },
+                'disputes as disputes_count'
+            ])->withSum(['orders as total_revenue' => function ($q) {
                 $q->where('status', 'delivered');
-            }])->withSum(['orders as total_revenue' => function ($q) {
-                $q->where('status', 'delivered');
-            }], 'total_amount')
+            }], 'amount_in_base_currency')
                 ->latest()->get();
         } else {
             $users = $query->latest()->get();
         }
 
         $filename = "{$role}_export_" . date('Y-m-d_H-i-s') . ".csv";
-        $handle = fopen('php://output', 'w');
 
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        $headers = [
+            "Content-type"        => "text/csv",
+            "Content-Disposition" => "attachment; filename=$filename",
+            "Pragma"              => "no-cache",
+            "Cache-Control"       => "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0",
+            "Expires"             => "0"
+        ];
 
-        if ($role === 'student') {
-            fputcsv($handle, [
-                'Sr. No.',
-                'User ID',
-                'Date of Reg.',
-                'Last Active',
-                'Full Name',
-                'Country',
-                'Email ID',
-                'Highest Education',
-                'Contact No.',
-                'Vouchers Purchased',
-                'Revenue Paid',
-                'Disputed Payments',
-                'Referral Points',
-                'Bonus Points',
-                'Status'
-            ]);
+        $callback = function () use ($users, $role) {
+            $handle = fopen('php://output', 'w');
 
-            foreach ($users as $index => $user) {
+            if ($role === 'student') {
                 fputcsv($handle, [
-                    $index + 1,
-                    $user->user_id,
-                    $user->created_at ? $user->created_at->format('d M Y') : 'N/A',
-                    $user->last_login_at ? $user->last_login_at->format('d M Y H:i') : 'Never',
-                    $user->first_name . ' ' . $user->last_name,
-                    $user->country,
-                    $user->email,
-                    $user->highest_education ?? 'N/A',
-                    $user->phone,
-                    $user->orders_count ?? 0,
-                    number_format($user->total_revenue ?? 0, 2),
-                    $user->disputed_payments ?? 0,
-                    $user->referral_points ?? 0,
-                    $user->bonus_points ?? 0,
-                    $user->is_active ? 'Active' : 'Frozen'
+                    'Sr. No.',
+                    'User ID',
+                    'Date of Reg.',
+                    'Last Active',
+                    'Full Name',
+                    'Country',
+                    'Email ID',
+                    'Highest Education',
+                    'Contact No.',
+                    'Vouchers Purchased',
+                    'Revenue Paid',
+                    'Disputed Payments',
+                    'Referral Points',
+                    'Bonus Points',
+                    'Status'
                 ]);
-            }
-        } else {
-            fputcsv($handle, ['User ID', 'Name', 'Email', 'Country', 'Phone', 'Status', 'Registered Date']);
 
-            foreach ($users as $user) {
-                fputcsv($handle, [
-                    $user->user_id,
-                    $user->first_name . ' ' . $user->last_name,
-                    $user->email,
-                    $user->country,
-                    $user->phone,
-                    $user->is_active ? 'Active' : 'Frozen',
-                    $user->created_at->format('Y-m-d H:i:s')
-                ]);
-            }
-        }
+                foreach ($users as $index => $user) {
+                    fputcsv($handle, [
+                        $index + 1,
+                        $user->user_id,
+                        $user->created_at ? $user->created_at->format('d M Y') : 'N/A',
+                        $user->last_login_at ? $user->last_login_at->format('d M Y H:i') : 'Never',
+                        $user->first_name . ' ' . $user->last_name,
+                        $user->country,
+                        $user->email,
+                        $user->highest_education ?? 'N/A',
+                        $user->phone,
+                        $user->orders_count ?? 0,
+                        number_format($user->total_revenue ?? 0, 2),
+                        $user->disputes_count ?? 0,
+                        $user->referral_points ?? 0,
+                        $user->bonus_points ?? 0,
+                        $user->is_active ? 'Active' : 'Frozen'
+                    ]);
+                }
+            } else {
+                fputcsv($handle, ['User ID', 'Name', 'Email', 'Country', 'Phone', 'Status', 'Registered Date']);
 
-        fclose($handle);
-        exit;
+                foreach ($users as $user) {
+                    fputcsv($handle, [
+                        $user->user_id,
+                        $user->first_name . ' ' . $user->last_name,
+                        $user->email,
+                        $user->country,
+                        $user->phone,
+                        $user->is_active ? 'Active' : 'Frozen',
+                        $user->created_at ? $user->created_at->format('Y-m-d H:i:s') : 'N/A'
+                    ]);
+                }
+            }
+
+            fclose($handle);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
     public function ResellerAgent(Request $request)
@@ -1143,9 +1246,8 @@ class UserController extends Controller
 
         if (auth()->user()->account_type === 'reseller_agent') {
             $authUser = auth()->user();
-            if (!$authUser->can_view_all_countries) {
-                $permitted = $authUser->permitted_countries ?? [];
-                $query->whereIn('country', $permitted);
+            if (!$authUser->can_view_all_countries && !empty($authUser->permitted_countries)) {
+                $query->whereIn('country', $authUser->permitted_countries);
             }
             $query->where('sub_agent_id', auth()->id());
         }
@@ -1208,7 +1310,7 @@ class UserController extends Controller
             $q->where('status', 'delivered');
         }])->withSum(['orders as total_revenue' => function ($q) {
             $q->where('status', 'delivered');
-        }], 'total_amount')
+        }], 'amount_in_base_currency')
             ->latest()->paginate($perPage)->withQueryString();
 
         if ($request->ajax()) {

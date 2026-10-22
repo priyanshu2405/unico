@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Helpers\CountryHelper;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -529,6 +530,86 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(User::class, 'sub_agent_id');
     }
 
+    public function connectedAgents()
+    {
+        return $this->hasMany(User::class, 'sub_agent_id')->where('account_type', 'agent');
+    }
+
+    public function connectedStudents()
+    {
+        return $this->hasMany(User::class, 'sub_agent_id')->where('account_type', 'student');
+    }
+
+    public function getConnectedAgentsCountAttribute(): int
+    {
+        return $this->connectedAgents()->count();
+    }
+
+    public function getConnectedStudentsCountAttribute(): int
+    {
+        return $this->connectedStudents()->count();
+    }
+
+    /**
+     * Query all orders belonging to this reseller and all connected sub-agents/students.
+     */
+    public function getResellerNetworkOrdersQuery()
+    {
+        $resellerId = $this->id;
+        return Order::where(function ($q) use ($resellerId) {
+            $q->where('orders.user_id', $resellerId)
+              ->orWhere('orders.sub_agent_id', $resellerId)
+              ->orWhereHas('user', function ($qu) use ($resellerId) {
+                  $qu->where('sub_agent_id', $resellerId);
+              });
+        });
+    }
+
+    public function getTotalNetworkVouchersCountAttribute(): int
+    {
+        return (int) $this->getResellerNetworkOrdersQuery()
+            ->where('orders.status', 'delivered')
+            ->sum('quantity');
+    }
+
+    public function getTotalNetworkSalesAmountAttribute(): float
+    {
+        return (float) $this->getResellerNetworkOrdersQuery()
+            ->where('orders.status', 'delivered')
+            ->sum('amount');
+    }
+
+    public function getTotalNetworkOrdersCountAttribute(): int
+    {
+        return (int) $this->getResellerNetworkOrdersQuery()
+            ->where('orders.status', 'delivered')
+            ->count();
+    }
+
+    public function getTotalDirectVouchersCountAttribute(): int
+    {
+        return (int) $this->orders()
+            ->where('status', 'delivered')
+            ->sum('quantity');
+    }
+
+    public function getTotalDirectSalesAmountAttribute(): float
+    {
+        return (float) $this->orders()
+            ->where('status', 'delivered')
+            ->sum('amount');
+    }
+
+    public function getTotalSubagentVouchersCountAttribute(): int
+    {
+        return max(0, $this->total_network_vouchers_count - $this->total_direct_vouchers_count);
+    }
+
+    public function getTotalSubagentSalesAmountAttribute(): float
+    {
+        return max(0.0, (float)($this->total_network_sales_amount - $this->total_direct_sales_amount));
+    }
+
     public function agentDetail()
     {
         return $this->hasOne(AgentDetail::class);
@@ -542,6 +623,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function orders()
     {
         return $this->hasMany(Order::class, 'user_id', 'id');
+    }
+
+    public function disputes(): HasMany
+    {
+        return $this->hasMany(Dispute::class, 'user_id', 'id');
     }
 
     public function riskLevel()
@@ -577,5 +663,66 @@ class User extends Authenticatable implements MustVerifyEmail
     public function supportAssignments()
     {
         return $this->hasMany(SupportAssignment::class, 'support_user_id');
+    }
+
+    public function getPreferredCurrency(): string
+    {
+        $iso = strtoupper(trim($this->country_iso ?? ''));
+        $userId = strtoupper(trim($this->user_id ?? ''));
+        $country = trim($this->country ?? '');
+
+        // 1. If user has explicit country name, resolve currency from country name
+        if ($country !== '') {
+            $lowerCountry = strtolower($country);
+            if (str_contains($lowerCountry, 'pakistan')) return 'PKR';
+            if (str_contains($lowerCountry, 'india')) return 'INR';
+            if (str_contains($lowerCountry, 'united kingdom') || $lowerCountry === 'uk') return 'GBP';
+            if (str_contains($lowerCountry, 'emirates') || str_contains($lowerCountry, 'uae')) return 'AED';
+            if (str_contains($lowerCountry, 'bangladesh')) return 'BDT';
+            if (str_contains($lowerCountry, 'united states') || $lowerCountry === 'usa') return 'USD';
+
+            $allCountries = CountryHelper::getAllCountries();
+            foreach ($allCountries as $code => $cName) {
+                if (strcasecmp($cName, $country) === 0) {
+                    $countryData = CountryHelper::getCountryData($code);
+                    if (!empty($countryData['currency'])) {
+                        return $countryData['currency'];
+                    }
+                }
+            }
+        }
+
+        // 2. If country_iso is present:
+        // Guard against legacy database records where country_iso was mistakenly set to 'IN' by IP fallback
+        if ($iso === 'IN') {
+            if (str_starts_with($userId, 'UNPK')) return 'PKR';
+            if (str_starts_with($userId, 'UNGB')) return 'GBP';
+            if (str_starts_with($userId, 'UNAE')) return 'AED';
+            if (str_starts_with($userId, 'UNBD')) return 'BDT';
+            if (str_starts_with($userId, 'UNUS')) return 'USD';
+            return 'INR';
+        }
+
+        if ($iso !== '') {
+            $countryData = CountryHelper::getCountryData($iso);
+            if (!empty($countryData['currency'])) {
+                return $countryData['currency'];
+            }
+        }
+
+        // 3. Fallback to userId prefix if country and ISO were not set or defaulted
+        if (str_starts_with($userId, 'UNPK')) return 'PKR';
+        if (str_starts_with($userId, 'UNIN')) return 'INR';
+        if (str_starts_with($userId, 'UNGB')) return 'GBP';
+        if (str_starts_with($userId, 'UNAE')) return 'AED';
+        if (str_starts_with($userId, 'UNBD')) return 'BDT';
+        if (str_starts_with($userId, 'UNUS')) return 'USD';
+
+        return 'USD';
+    }
+
+    public function getCurrencyAttribute(): string
+    {
+        return $this->getPreferredCurrency();
     }
 }

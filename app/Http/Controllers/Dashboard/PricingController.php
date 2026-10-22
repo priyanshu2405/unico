@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\InventoryVoucher;
 use App\Models\VoucherPriceRule;
 use App\Helpers\CountryHelper;
+use App\Services\CurrencyService;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
@@ -108,7 +109,7 @@ class PricingController extends Controller implements HasMiddleware
             "Content-type" => "text/csv",
             "Content-Disposition" => "attachment; filename=$filename",
             "Pragma" => "no-cache",
-            "Cache-Control" => "must-revalidate, post-check=0, pre-check=0",
+            "Cache-Control" => "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0",
             "Expires" => "0"
         ];
 
@@ -125,13 +126,17 @@ class PricingController extends Controller implements HasMiddleware
             'Purchase Invoice No.',
             'Purchase Date',
             'Total Quantity',
-            'Purchase Value',
+            'Purchase Value (Local)',
+            'Per Unit Price (Local)',
             'Taxes',
-            'Per Unit Price',
+            'Exchange Rate (to USD)',
+            'Purchase Value (USD)',
+            'Per Unit Price (USD)',
             'Issue Date',
             'Expiry Date',
             'Credit Limit',
-            'Sale Price',
+            'Sale Price (Local)',
+            'Sale Price (USD)',
             'Status'
         ];
 
@@ -140,26 +145,36 @@ class PricingController extends Controller implements HasMiddleware
             fputcsv($file, $columns);
 
             foreach ($rules as $index => $rule) {
+                $curr = $rule->currency ?: 'USD';
+                $convVal = CurrencyService::convertToBase((float)$rule->purchase_value, $curr);
+                $convUnit = CurrencyService::convertToBase((float)$rule->per_unit_price, $curr);
+                $convSale = CurrencyService::convertToBase((float)$rule->sale_price, $curr);
+                $rate = (float)$convVal['exchange_rate'];
+
                 fputcsv($file, [
                     $index + 1,
                     $rule->purchase_id,
                     $rule->created_at->format('d M Y'),
                     $rule->created_at->format('H:i A'),
                     $rule->brand_name,
-                    $rule->currency,
+                    $curr,
                     $rule->country_name,
                     $rule->voucher_variant,
                     $rule->voucher_type,
                     $rule->purchase_invoice_no,
                     $rule->purchase_date,
                     $rule->total_quantity,
-                    $rule->purchase_value,
-                    $rule->taxes,
-                    $rule->per_unit_price,
+                    number_format((float)$rule->purchase_value, 2, '.', ''),
+                    number_format((float)$rule->per_unit_price, 2, '.', ''),
+                    number_format((float)$rule->taxes, 2, '.', ''),
+                    number_format($rate, 6, '.', ''),
+                    number_format((float)$convVal['base_amount'], 2, '.', ''),
+                    number_format((float)$convUnit['base_amount'], 2, '.', ''),
                     $rule->issue_date,
                     $rule->expiry_date,
                     $rule->credit_limit,
-                    $rule->sale_price,
+                    number_format((float)$rule->sale_price, 2, '.', ''),
+                    number_format((float)$convSale['base_amount'], 2, '.', ''),
                     $rule->is_active ? 'Active' : 'Inactive'
                 ]);
             }

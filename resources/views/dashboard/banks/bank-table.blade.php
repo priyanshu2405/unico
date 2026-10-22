@@ -54,21 +54,21 @@
     <div class="row g-4 mb-4">
         @php
         $totalSold = $reportData->sum('vouchers_sold');
-        $totalValue = $reportData->sum('sale_value');
+        $totalValue = $reportData->sum('buying_sale_value');
         $stripeData = $reportData->firstWhere('id', 'stripe');
         @endphp
         <div class="col-md-4">
             <div class="card border-0 shadow-sm p-3 bg-primary text-white" style="border-radius: 20px;">
                 <div class="small text-uppercase fw-bold opacity-75 mb-1">Total Sale Value</div>
-                <h3 class="fw-bold mb-0">RS {{ number_format($totalValue, 2) }}</h3>
-                <small class="opacity-75">All payment methods</small>
+                <h3 class="fw-bold mb-0">$ {{ number_format($totalValue, 2) }}</h3>
+                <small class="opacity-75">All payment methods (USD)</small>
             </div>
         </div>
         <div class="col-md-4">
             <div class="card border-0 shadow-sm p-3 bg-success text-white" style="border-radius: 20px;">
                 <div class="small text-uppercase fw-bold opacity-75 mb-1">Stripe Credit Store</div>
-                <h3 class="fw-bold mb-0">RS {{ number_format($stripeData['sale_value'] ?? 0, 2) }}</h3>
-                <small class="opacity-75">Total credited via Stripe</small>
+                <h3 class="fw-bold mb-0">$ {{ number_format($stripeData['buying_sale_value'] ?? 0, 2) }}</h3>
+                <small class="opacity-75">Total credited via Stripe (USD)</small>
             </div>
         </div>
         <div class="col-md-4">
@@ -253,7 +253,7 @@
                             <td>{{ number_format($data['refunds'], 2) }}</td>
                             <td>{{ $data['disputes'] }}</td>
                             <td>{{ $data['conversion_rate'] }}</td>
-                            <td>{{ number_format($data['sale_value'], 2) }}</td>
+                            <td class="fw-bold text-primary">$ {{ number_format($data['buying_sale_value'], 2) }}</td>
                             <td>0.00</td>
                             <td>{{ is_string($data['created_at']) ? $data['created_at'] : $data['created_at']->format('d M Y') }}</td>
                         </tr>

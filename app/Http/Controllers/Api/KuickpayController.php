@@ -233,22 +233,27 @@ class KuickpayController extends Controller
         if ($order->voucher_type === 'wallet_topup') {
             $user = $order->user;
             if ($user) {
-                $user->wallet_balance += $order->amount;
+                $conversion = \App\Services\CurrencyService::convertToBase((float)$order->amount, $order->currency ?: 'PKR');
+                $amountInUSD = (float)$conversion['base_amount'];
+
+                $user->wallet_balance += $amountInUSD;
+                $user->withdrawable_balance += $amountInUSD;
                 $user->save();
 
                 \App\Models\WalletLedger::create([
                     'transaction_id' => $tranAuthId,
                     'user_id' => $user->id,
                     'type' => 'credit',
-                    'amount' => $order->amount,
+                    'amount' => $amountInUSD,
                     'source' => 'kuickpay',
-                    'description' => 'Wallet Top-up via KuickPay',
+                    'description' => "Wallet Top-up via KuickPay ({$order->amount} PKR)",
                     'ip_address' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                     'created_at' => now(),
                 ]);
             }
         } else {
+
             // ✅ AUTO DELIVERY FOR VOUCHERS
             try {
                 $inventory = $order->inventoryVoucher;

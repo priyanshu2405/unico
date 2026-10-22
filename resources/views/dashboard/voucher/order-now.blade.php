@@ -33,13 +33,29 @@
 <script src="https://js.stripe.com/v3/"></script>
 <div class="container-fluid py-4">
 
+    @php
+        $userCurrency = auth()->user()->currency ?? 'USD';
+        $storeCreditLocal = \App\Services\CurrencyService::convert((float)($userPoints['store_credit'] ?? 0), 'USD', $userCurrency);
+        $walletBalanceLocal = \App\Services\CurrencyService::convert((float)(auth()->user()->wallet_balance ?? 0), 'USD', $userCurrency);
+        $voucherCurrency = $rule->currency ?? 'USD';
+        $initialPrice = (float) $rule->final_price;
+        $initialTotalUserCurr = \App\Services\CurrencyService::convert($initialPrice, $voucherCurrency, $userCurrency);
+        $initialTotalUSD = \App\Services\CurrencyService::convert($initialPrice, $voucherCurrency, 'USD');
+    @endphp
+
+
     <div class="row g-3 mb-4">
         <div class="col-md-3">
             <div class="card shadow-sm border-0 border-start border-primary border-4">
                 <div class="card-body">
                     <div class="text-muted small mb-1">Available Store Credit </div>
                     <div class="d-flex align-items-center">
-                        <h3 class="fw-bold mb-0">${{ number_format($userPoints['store_credit'], 0) }}</h3>
+                        <div>
+                            <h3 class="fw-bold mb-0">{{ $userCurrency }} {{ number_format($storeCreditLocal, 2) }}</h3>
+                            @if($userCurrency !== 'USD')
+                                <div class="text-muted extra-small">($ {{ number_format($userPoints['store_credit'], 2) }} USD)</div>
+                            @endif
+                        </div>
                         <span class="ms-auto text-success small fw-bold"><i class="fas fa-arrow-up me-1"></i>12%</span>
                     </div>
                 </div>
@@ -256,15 +272,24 @@
                                     <div class="d-flex justify-content-between align-items-center">
                                         <div>
                                             <p class="text-muted small mb-1">Your Wallet Balance</p>
-                                            <h3 class="fw-bold mb-0 text-primary">USD {{ number_format(auth()->user()->wallet_balance, 2) }}</h3>
+                                            <h3 class="fw-bold mb-0 text-primary">{{ $userCurrency }} {{ number_format($walletBalanceLocal, 2) }}</h3>
+                                            @if($userCurrency !== 'USD')
+                                                <div class="text-muted small fw-semibold">($ {{ number_format(auth()->user()->wallet_balance, 2) }} USD)</div>
+                                            @endif
                                         </div>
                                         <i class="fas fa-wallet fa-3x opacity-25"></i>
                                     </div>
                                     <div class="mt-3 pt-3 border-top">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
-                                                <p class="text-muted small mb-1">Total Payable in USD</p>
-                                                <h4 class="fw-bold mb-0 text-warning">USD <span id="total-usd">0.00</span></h4>
+                                                <p class="text-muted small mb-1">Deduction in Your Currency</p>
+                                                <h4 class="fw-bold mb-0 text-dark">{{ $userCurrency }} <span id="wallet-deduction-user-curr">{{ number_format($initialTotalUserCurr, 2) }}</span>
+                                                    @if($userCurrency !== 'USD')
+                                                        <span class="text-muted small font-monospace fw-normal">($ <span id="total-usd">{{ number_format($initialTotalUSD, 2) }}</span> USD)</span>
+                                                    @else
+                                                        <span class="d-none" id="total-usd">{{ number_format($initialTotalUSD, 2) }}</span>
+                                                    @endif
+                                                </h4>
                                             </div>
                                             <div class="text-end">
                                                 <p class="text-muted small mb-1">Live Rate</p>
@@ -278,6 +303,7 @@
                                     </div>
                                 </div>
                             </div>
+
 
                             <!-- Card Payment Section -->
                             <div id="card-payment-section" class="d-none">
@@ -405,12 +431,33 @@
                         <div>
                             <p class="text-muted small mb-0">Total to pay</p>
                             <h3 class="fw-bold text-primary mb-0">{{ $rule->currency }} <span id="final-total">{{ number_format($rule->final_price, 0) }}</span></h3>
+                            <div class="small mt-1" id="user-deduction-info">
+                                @if($userCurrency !== $voucherCurrency)
+                                    <span class="text-secondary"><i class="fas fa-wallet text-muted me-1"></i> Deduction in your currency:</span>
+                                    <strong class="text-dark fw-bold">{{ $userCurrency }} <span id="final-total-user-curr">{{ number_format($initialTotalUserCurr, 2) }}</span></strong>
+                                    @if($userCurrency !== 'USD')
+                                        <span class="text-muted extra-small font-monospace">($ <span id="final-total-usd-curr">{{ number_format($initialTotalUSD, 2) }}</span> USD)</span>
+                                    @else
+                                        <span class="d-none" id="final-total-usd-curr">{{ number_format($initialTotalUSD, 2) }}</span>
+                                    @endif
+                                @else
+                                    @if($userCurrency !== 'USD')
+                                        <span class="text-secondary"><i class="fas fa-wallet text-muted me-1"></i> Base equivalent:</span>
+                                        <strong class="text-dark fw-bold">($ <span id="final-total-usd-curr">{{ number_format($initialTotalUSD, 2) }}</span> USD)</strong>
+                                        <span class="d-none" id="final-total-user-curr">{{ number_format($initialTotalUserCurr, 2) }}</span>
+                                    @else
+                                        <span class="d-none" id="final-total-user-curr">{{ number_format($initialTotalUserCurr, 2) }}</span>
+                                        <span class="d-none" id="final-total-usd-curr">{{ number_format($initialTotalUSD, 2) }}</span>
+                                    @endif
+                                @endif
+                            </div>
                         </div>
                         <div class="d-flex gap-2">
                             <a href="{{ route('vouchers') }}" class="btn btn-light border-0 px-4 rounded-3 fw-bold">Cancel</a>
                             <button class="btn btn-primary px-5 rounded-3 fw-bold shadow-sm" id="pay-now">Place Order</button>
                         </div>
                     </div>
+
                 </div>
             </div>
         </div>
@@ -518,20 +565,23 @@
             $('#final-total').text(total.toLocaleString());
             $('.required-amount-text').text(total.toLocaleString());
 
-            // USD Conversion logic for wallet
-            let currency = "{{ $rule->currency }}";
-            if (currency !== 'USD') {
+            // USD Conversion logic for wallet & base equivalent
+            let voucherCurrency = "{{ $rule->currency }}";
+            let userCurrency = "{{ $userCurrency }}";
+
+            if (voucherCurrency !== 'USD') {
                 $.get("{{ route('currency.convert') }}", {
                     amount: total,
-                    from: currency,
+                    from: voucherCurrency,
                     to: 'USD'
                 }, function(data) {
                     if (data.success) {
                         $('#total-usd').text(data.converted.toFixed(2));
                         $('.required-usd-text').text(data.converted.toFixed(2));
+                        $('#final-total-usd-curr').text(data.converted.toFixed(2));
                         $('#live-rate').text(data.rate.toFixed(4));
                         
-                        let balance = {{ auth()->user()->wallet_balance }};
+                        let balance = {{ auth()->user()->wallet_balance ?? 0 }};
                         if (data.converted > balance) {
                             $('#wallet-insufficient').removeClass('d-none');
                         } else {
@@ -542,15 +592,36 @@
             } else {
                 $('#total-usd').text(total.toFixed(2));
                 $('.required-usd-text').text(total.toFixed(2));
+                $('#final-total-usd-curr').text(total.toFixed(2));
                 $('#live-rate').text('1.0000');
                 
-                let balance = {{ auth()->user()->wallet_balance }};
+                let balance = {{ auth()->user()->wallet_balance ?? 0 }};
                 if (total > balance) {
                     $('#wallet-insufficient').removeClass('d-none');
                 } else {
                     $('#wallet-insufficient').addClass('d-none');
                 }
             }
+
+            // User Currency Conversion logic for deduction display
+            if (voucherCurrency !== userCurrency) {
+                $.get("{{ route('currency.convert') }}", {
+                    amount: total,
+                    from: voucherCurrency,
+                    to: userCurrency
+                }, function(data) {
+                    if (data.success) {
+                        let formatted = data.converted.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        $('#final-total-user-curr').text(formatted);
+                        $('#wallet-deduction-user-curr').text(formatted);
+                    }
+                });
+            } else {
+                let formatted = total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                $('#final-total-user-curr').text(formatted);
+                $('#wallet-deduction-user-curr').text(formatted);
+            }
+
 
             // Auto fill transfer amount
             $('#transfer-amount').val(total);

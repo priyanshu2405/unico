@@ -25,8 +25,8 @@ class WalletController extends Controller
         // Use a separate query for stats to ensure it matches the visible users
         $stats = [
             'total_balance' => $query->sum('wallet_balance'),
-            'total_credits' => WalletLedger::where('type', 'credit')->sum('amount'),
-            'total_debits' => WalletLedger::where('type', 'debit')->sum('amount'),
+            'total_credits' => WalletLedger::where('type', 'credit')->sum('amount_usd'),
+            'total_debits' => WalletLedger::where('type', 'debit')->sum('amount_usd'),
         ];
 
         if ($request->ajax() || $request->has('tab')) {
@@ -60,6 +60,10 @@ class WalletController extends Controller
             'type' => 'credit',
             'amount' => $request->amount,
             'description' => $request->note ?? 'Manual Credit',
+            'currency' => 'USD',
+            'original_amount' => $request->amount,
+            'exchange_rate_applied' => 1.0,
+            'amount_usd' => $request->amount,
         ]);
 
         if ($request->ajax()) {
@@ -94,6 +98,10 @@ class WalletController extends Controller
             'type' => 'debit',
             'amount' => $request->amount,
             'description' => $request->note ?? 'Manual Debit',
+            'currency' => 'USD',
+            'original_amount' => $request->amount,
+            'exchange_rate_applied' => 1.0,
+            'amount_usd' => $request->amount,
         ]);
 
         if ($request->ajax()) {

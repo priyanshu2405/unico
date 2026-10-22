@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 
 use App\Models\InventoryVoucher;
 use App\Models\Order;
+use App\Services\ProfitLossService;
 
 class PurchesController extends Controller
 {
@@ -34,9 +35,14 @@ class PurchesController extends Controller
             $query->whereDate('purchase_date', '<=', $request->to_date);
         }
 
-        // Voucher Purchases Summery (USD / GBP)
+        // Filter using the currency paid for the stock purchase.
         if ($request->filled('currency')) {
-            $query->where('currency', $request->currency);
+            $query->where(function ($currencyQuery) use ($request) {
+                $currencyQuery->where('local_currency', $request->currency)
+                    ->orWhere(function ($legacyQuery) use ($request) {
+                        $legacyQuery->whereNull('local_currency')->where('currency', $request->currency);
+                    });
+            });
         }
 
         // Brand Purchase Report
@@ -61,12 +67,13 @@ class PurchesController extends Controller
 
         $perPage = $request->get('per_page', 10);
         $purchases = $query->latest()->paginate($perPage)->withQueryString();
+        $currencies = \App\Helpers\CurrencyHelper::getAllCurrencies();
 
         if ($request->ajax()) {
-            return view('dashboard.purches.partials.purches-table', compact('purchases'))->render();
+            return view('dashboard.purches.partials.purches-table', compact('purchases', 'currencies'))->render();
         }
 
-        return view('dashboard.purches.purches-report', compact('purchases'));
+        return view('dashboard.purches.purches-report', compact('purchases', 'currencies'));
     }
 
     public function export(Request $request)
@@ -80,7 +87,12 @@ class PurchesController extends Controller
             $query->whereDate('purchase_date', '<=', $request->to_date);
         }
         if ($request->filled('currency')) {
-            $query->where('currency', $request->currency);
+            $query->where(function ($currencyQuery) use ($request) {
+                $currencyQuery->where('local_currency', $request->currency)
+                    ->orWhere(function ($legacyQuery) use ($request) {
+                        $legacyQuery->whereNull('local_currency')->where('currency', $request->currency);
+                    });
+            });
         }
         if ($request->filled('brand_name')) {
             $query->where('brand_name', 'like', '%' . $request->brand_name . '%');
@@ -102,34 +114,64 @@ class PurchesController extends Controller
             "Content-type"        => "text/csv",
             "Content-Disposition" => "attachment; filename=$filename",
             "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Cache-Control"       => "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0",
             "Expires"             => "0"
         ];
 
         $columns = [
-            'SKU ID', 'Date', 'Brand Name', 'Currency', 'Country/Region', 
-            'Voucher Variant', 'Voucher Type', 'Purchase Invoice No.', 
-            'Total Quantity', 'Purchase Value', 'Taxes', 'Per Unit Price'
+            'Sr. No.',
+            'P.ID.',
+            'Date',
+            'Time',
+            'Brand Name',
+            'Purchase Currency',
+            'Country/Region',
+            'Voucher Variant',
+            'Voucher Type',
+            'Purchase Invoice No.',
+            'Purchase Date',
+            'Total Quantity',
+            'Purchase Value (Local)',
+            'Per Unit Price (Local)',
+            'Taxes',
+            'Exchange Rate (to USD)',
+            'Purchase Value (USD)',
+            'Per Unit Price (USD)',
+            'Issue Date',
+            'Expiry Date'
         ];
 
         $callback = function () use ($records, $columns) {
             $file = fopen('php://output', 'w');
             fputcsv($file, $columns);
 
-            foreach ($records as $record) {
+            foreach ($records as $index => $record) {
+                $curr = $record->local_currency ?: ($record->currency ?: 'USD');
+                $rate = ProfitLossService::getStockUploadRate($record);
+                $purchaseValUsd = ProfitLossService::getInventoryPurchaseTotalBase($record);
+                $unitPriceUsd = ProfitLossService::getInventoryUnitCostBase($record);
+
                 fputcsv($file, [
+                    $index + 1,
                     $record->sku_id,
-                    $record->purchase_date ? $record->purchase_date->format('Y-m-d') : '',
+                    $record->purchase_date ? $record->purchase_date->format('Y-m-d') : 'N/A',
+                    $record->created_at ? $record->created_at->format('H:i:s') : 'N/A',
                     $record->brand_name,
-                    $record->currency,
-                    $record->country_region,
+                    $curr,
+                    is_array($record->country_region) ? implode(', ', $record->country_region) : ($record->country_region ?: 'Global'),
                     $record->voucher_variant,
                     $record->voucher_type,
                     $record->purchase_invoice_no,
-                    $record->quantity,
-                    $record->purchase_value,
-                    $record->taxes,
-                    $record->purchase_value_per_unit,
+                    $record->purchase_date ? $record->purchase_date->format('Y-m-d') : 'N/A',
+                    $record->purchased_qty,
+                    number_format((float)$record->purchase_value, 2, '.', ''),
+                    number_format((float)$record->purchase_value_per_unit, 2, '.', ''),
+                    number_format((float)$record->taxes, 2, '.', ''),
+                    number_format($rate, 6, '.', ''),
+                    number_format($purchaseValUsd, 2, '.', ''),
+                    number_format($unitPriceUsd, 2, '.', ''),
+                    $record->created_at ? $record->created_at->format('Y-m-d') : 'N/A',
+                    $record->expiry_date ? $record->expiry_date->format('Y-m-d') : 'N/A'
                 ]);
             }
 

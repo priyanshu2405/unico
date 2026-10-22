@@ -73,12 +73,12 @@ class AgentController extends Controller
         $perPage = $request->get('per_page', 15);
         $orders = $query->latest()->paginate($perPage)->withQueryString();
 
-        // Stats for the top cards
+        // Stats for the top cards (only confirmed delivered orders)
         $stats = [
-            'points_earned' => Order::where('user_id', Auth::id())->sum('referral_points') + 
-                               Order::where('sub_agent_id', Auth::id())->sum('referral_points'),
-            'points_redeemed' => Order::where('user_id', Auth::id())->sum('points_redeemed'),
-            'current_bonus' => Order::where('user_id', Auth::id())->sum('bonus_amount'),
+            'points_earned' => Order::where('status', 'delivered')->where('user_id', Auth::id())->sum('referral_points') + 
+                               Order::where('status', 'delivered')->where('sub_agent_id', Auth::id())->sum('referral_points'),
+            'points_redeemed' => Order::where('status', 'delivered')->where('user_id', Auth::id())->sum('points_redeemed'),
+            'current_bonus' => Order::where('status', 'delivered')->where('user_id', Auth::id())->sum('bonus_amount'),
         ];
 
         // Fetch sub agents for the filter dropdown
@@ -116,11 +116,14 @@ class AgentController extends Controller
 
     public function bankLink()
     {
-        
+        $user = Auth::user();
         $countryData = CountryHelper::getCountryData(session('user_country_code', 'US'));
-        $banks =   $banks = BankAccountModel::where('user_id', Auth::id())->get();
-        return view('dashboard.banks.link', compact('countryData', 'banks'));
+        $banks = BankAccountModel::where('user_id', $user->id)->get();
+        $totalBalance = $banks->sum('balance');
+        $transactions = WalletLedger::where('user_id', $user->id)->latest()->paginate(10);
+        return view('dashboard.banks.link', compact('countryData', 'banks', 'totalBalance', 'transactions'));
     }
+
 
     public function storeBank(Request $request)
     {

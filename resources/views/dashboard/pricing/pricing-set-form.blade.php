@@ -45,7 +45,7 @@
 <div class="container-fluid">
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 fw-bold">{{ $isEdit ? 'Edit Purches Details' : 'Purches Details' }}</h5>
+            <h5 class="mb-0 fw-bold">{{ $isEdit ? 'Edit Pricing Rule' : 'Add Pricing Rule' }}</h5>
             <a href="{{ route('pricing.index') }}" class="btn btn-light btn-sm">
                 <i class="fas fa-arrow-left me-1"></i> Back to Rules
             </a>

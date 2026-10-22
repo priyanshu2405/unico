@@ -14,11 +14,15 @@ class RefundRequest extends Model
         'status',
         'admin_note',
         'bank_details',
-        'transaction_id',
         'user_transaction_id',
         'transaction_slip',
+        'transaction_id',
         'refund_receipt',
         'processed_at',
+        'currency',
+        'exchange_rate_applied',
+        'amount_in_base_currency',
+        'approved_by',
     ];
 
     public function user()

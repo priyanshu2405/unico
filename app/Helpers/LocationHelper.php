@@ -12,25 +12,44 @@ class LocationHelper
     ================================ */
     public static function geo()
     {
+        if (auth()->check()) {
+            $user = auth()->user();
+            $countryIso = strtoupper(trim($user->country_iso ?? ''));
+            if (!empty($countryIso)) {
+                $countryData = CountryHelper::getCountryData($countryIso);
+                return [
+                    'country_code' => $countryIso,
+                    'country_name' => $user->country ?? ($countryData['country_name'] ?? $countryIso),
+                    'currency'     => $user->currency,
+                    'flag'         => strtolower($countryIso),
+                ];
+            }
+        }
+
         $ip = request()->header('X-Forwarded-For')
             ?? request()->header('CF-Connecting-IP')
             ?? request()->ip();
 
-        // Local testing ke liye:
-        // $ip = '8.8.8.8';
+        // If X-Forwarded-For contains multiple comma-separated IPs, take the first one
+        if (str_contains($ip, ',')) {
+            $ip = trim(explode(',', $ip)[0]);
+        }
 
         try {
             $response = Http::timeout(3)->get("https://ipapi.co/{$ip}/json/");
             $data = $response->json();
+            if (isset($data['error']) && $data['error']) {
+                $data = [];
+            }
         } catch (\Exception $e) {
             $data = [];
         }
 
         $geo = [
-            'country_code' => $data['country'] ?? 'IN',
-            'country_name' => $data['country_name'] ?? 'India',
-            'currency'     => $data['currency'] ?? 'INR',
-            'flag'         => strtolower($data['country'] ?? 'in'),
+            'country_code' => $data['country'] ?? 'US',
+            'country_name' => $data['country_name'] ?? 'United States',
+            'currency'     => $data['currency'] ?? 'USD',
+            'flag'         => strtolower($data['country'] ?? 'us'),
         ];
 
         session(['geo' => $geo]);
@@ -45,7 +64,10 @@ class LocationHelper
     ================================ */
     public static function currency()
     {
-        return self::geo()['currency'];
+        if (auth()->check() && !empty(auth()->user()->currency)) {
+            return auth()->user()->currency;
+        }
+        return self::geo()['currency'] ?? 'USD';
     }
 
     /* ===============================

@@ -28,7 +28,7 @@
                             </span>
                         </td>
                         <td class="fw-bold {{ $entry->type == 'credit' ? 'text-success' : 'text-danger' }}">
-                            {{ $entry->type == 'credit' ? '+' : '-' }}${{ number_format($entry->amount, 2) }}
+                            {{ $entry->type == 'credit' ? '+' : '-' }}${{ number_format($entry->amount_usd ?? $entry->amount, 2) }}
                         </td>
                         <td class="small pe-4">{{ $entry->description }}</td>
                     </tr>

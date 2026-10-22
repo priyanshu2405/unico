@@ -27,7 +27,7 @@
             <div class="card-body">
                <div class="text-muted small mb-1">Total Revenue</div>
                <div class="d-flex align-items-center">
-                  <h3 class="fw-bold mb-0">RS {{ number_format($stats['total_revenue'], 2) }}</h3>
+                  <h3 class="fw-bold mb-0">$ {{ number_format($stats['total_revenue'], 2) }}</h3>
                   <span class="ms-auto text-warning small fw-bold"><i class="fas fa-money-bill-wave me-1"></i>Total</span>
                </div>
             </div>
@@ -60,7 +60,7 @@
             <div class="card-body">
                <div class="text-muted small mb-1">Reseller Agents</div>
                <div class="d-flex align-items-center">
-                  <h3 class="fw-bold mb-0">{{ $stats['agents'] }}</h3>
+                  <h3 class="fw-bold mb-0">{{ $stats['reseller_agents'] }}</h3>
                   <span class="ms-auto text-success small fw-bold"><i class="fas fa-user-tie me-1"></i>B2B</span>
                </div>
             </div>
@@ -348,7 +348,7 @@
                                     label += ': ';
                                 }
                                 if (context.dataset.yAxisID === 'y') {
-                                    label += 'RS ' + new Intl.NumberFormat().format(context.parsed.y);
+                                    label += '$ ' + new Intl.NumberFormat().format(context.parsed.y);
                                 } else {
                                     label += new Intl.NumberFormat().format(context.parsed.y);
                                 }
@@ -365,7 +365,7 @@
                         beginAtZero: true,
                         title: {
                             display: true,
-                            text: 'Revenue (RS)'
+                            text: 'Revenue (USD)'
                         }
                     },
                     y1: {

@@ -6,6 +6,9 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
 use App\Models\Order;
+use App\Models\User;
+use App\Services\CurrencyService;
+use App\Services\ProfitLossService;
 
 class SalesController extends Controller
 {
@@ -21,10 +24,24 @@ class SalesController extends Controller
             });
         }
 
-        // Apply Reseller Agent Restriction (Only see sales of users they added)
+        // Apply Reseller Agent Restriction (See sales of users they added AND their own purchases)
         if ($authUser->isResellerAgent()) {
-            $query->whereHas('user', function ($q) use ($authUser) {
-                $q->where('sub_agent_id', $authUser->id);
+            $query->where(function ($q) use ($authUser) {
+                $q->where('orders.user_id', $authUser->id)
+                  ->orWhere('orders.sub_agent_id', $authUser->id)
+                  ->orWhereHas('user', function ($qu) use ($authUser) {
+                      $qu->where('sub_agent_id', $authUser->id);
+                  });
+            });
+        } elseif ($request->filled('reseller_id')) {
+            // Filter by specific Reseller Agent for Admin / Manager
+            $resellerId = $request->reseller_id;
+            $query->where(function ($q) use ($resellerId) {
+                $q->where('sub_agent_id', $resellerId)
+                  ->orWhere('user_id', $resellerId)
+                  ->orWhereHas('user', function ($qu) use ($resellerId) {
+                      $qu->where('sub_agent_id', $resellerId);
+                  });
             });
         }
 
@@ -121,12 +138,14 @@ class SalesController extends Controller
         $currencies = $filterData->pluck('inventoryVoucher.currency')->unique()->filter()->values();
         $voucherTypes = $filterData->pluck('voucher_type')->unique()->filter()->values();
         $cities = $filterData->pluck('inventoryVoucher.city')->flatten()->unique()->filter()->values();
+        $resellers = User::where('account_type', 'reseller_agent')->orderBy('first_name')->get(['id', 'first_name', 'last_name', 'user_id']);
+        $selectedReseller = $request->filled('reseller_id') ? User::find($request->reseller_id) : null;
 
         if ($request->ajax()) {
             return view('dashboard.sales.sales-table', compact('sales'))->render();
         }
 
-        return view('dashboard.sales.sales-index', compact('sales', 'brands', 'countries', 'states', 'currencies', 'voucherTypes', 'cities'));
+        return view('dashboard.sales.sales-index', compact('sales', 'brands', 'countries', 'states', 'currencies', 'voucherTypes', 'cities', 'resellers', 'selectedReseller'));
     }
 
     public function export(Request $request)
@@ -141,10 +160,23 @@ class SalesController extends Controller
             });
         }
 
-        // Apply Reseller Agent Restriction (Only see sales of users they added)
+        // Apply Reseller Agent Restriction (See sales of users they added AND their own purchases)
         if ($authUser->isResellerAgent()) {
-            $query->whereHas('user', function ($q) use ($authUser) {
-                $q->where('sub_agent_id', $authUser->id);
+            $query->where(function ($q) use ($authUser) {
+                $q->where('orders.user_id', $authUser->id)
+                  ->orWhere('orders.sub_agent_id', $authUser->id)
+                  ->orWhereHas('user', function ($qu) use ($authUser) {
+                      $qu->where('sub_agent_id', $authUser->id);
+                  });
+            });
+        } elseif ($request->filled('reseller_id')) {
+            $resellerId = $request->reseller_id;
+            $query->where(function ($q) use ($resellerId) {
+                $q->where('sub_agent_id', $resellerId)
+                  ->orWhere('user_id', $resellerId)
+                  ->orWhereHas('user', function ($qu) use ($resellerId) {
+                      $qu->where('sub_agent_id', $resellerId);
+                  });
             });
         }
 
@@ -216,7 +248,7 @@ class SalesController extends Controller
             "Content-type"        => "text/csv",
             "Content-Disposition" => "attachment; filename=$filename",
             "Pragma"              => "no-cache",
-            "Cache-Control"       => "must-revalidate, post-check=0, pre-check=0",
+            "Cache-Control"       => "no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0",
             "Expires"             => "0"
         ];
 
@@ -228,7 +260,8 @@ class SalesController extends Controller
             'Buyer ID',
             'Buyer Name',
             'Buyer Type',
-            'Local currency',
+            'Buyer Currency',
+            'Transaction Currency',
             'Country/Region',
             'City',
             'Voucher Variant',
@@ -236,11 +269,17 @@ class SalesController extends Controller
             'Sales Invoice No.',
             'Quantity',
             'Sales Value in Local Currency',
-            'Sale Value per Unit',
+            'Sale Value per Unit (Local)',
+            'Admin Exchange Rate (to USD)',
+            'Quoted Sales Value (USD)',
+            'Settled Sales Value (USD)',
+            'Purchase Cost per Unit (USD)',
+            'Total Purchase Cost (USD)',
+            'Gross Profit (USD)',
+            'Gateway FX Variance (USD)',
+            'Net Realized Profit (USD)',
             'Taxes',
             'Bank',
-            'Currency Conversion @',
-            'FX Gain/Loss',
             'Referral Points Earned',
             'Referral Points Redeemed',
             'Customer Bonus Points'
@@ -251,19 +290,36 @@ class SalesController extends Controller
             fputcsv($file, $columns);
 
             foreach ($records as $index => $record) {
-                $localValue = 0;
-                $currencyCode = $record->inventoryVoucher->local_currency ?? '';
-                if ($record->inventoryVoucher) {
-                    $localValue = $record->inventoryVoucher->purchase_value_per_unit * $record->quantity;
+                $currencyCode = $record->currency ?: ($record->inventoryVoucher->currency ?? 'USD');
+                $saleValueLocal = (float) $record->amount;
+                $quantity = max(1, (int)$record->quantity);
+                $unitValueLocal = $saleValueLocal / $quantity;
+                
+                // Admin Exchange Rate & Quoted Value in USD
+                $adminRate = (float)($record->exchange_rate_applied ?: CurrencyService::getRate($currencyCode));
+                $quotedSalesUsd = (float)($saleValueLocal * $adminRate);
+
+                // Settled Value in Base Currency (USD) from payment gateway/settlement
+                if ($record->amount_in_base_currency !== null && (float)$record->amount_in_base_currency > 0) {
+                    $settledSalesUsd = (float)$record->amount_in_base_currency;
+                } else {
+                    $settledSalesUsd = $quotedSalesUsd;
                 }
 
-                $unitValue = $record->quantity > 0 ? $localValue / $record->quantity : 0;
-
-                $fxGainLoss = 0;
+                // Purchase Cost (USD) — using pre-calculated locked USD columns
+                $unitPurchaseUsd = 0.0;
+                $totalPurchaseCostUsd = 0.0;
                 if ($record->inventoryVoucher) {
-                    $totalPurchaseValue = $record->inventoryVoucher->purchase_value_per_unit * $record->quantity;
-                    $fxGainLoss = $record->amount - $totalPurchaseValue;
+                    $unitPurchaseUsd = (float) ProfitLossService::getInventoryUnitCostBase($record->inventoryVoucher);
+                    $totalPurchaseCostUsd = $unitPurchaseUsd * $quantity;
                 }
+
+                // Financial Breakdown (Decoupled Operating Markup vs Gateway FX Variance)
+                $grossProfitUsd = $quotedSalesUsd - $totalPurchaseCostUsd;
+                $gatewayFxVarianceUsd = $settledSalesUsd - $quotedSalesUsd;
+                $netRealizedProfitUsd = $grossProfitUsd + $gatewayFxVarianceUsd;
+
+                $bank = $record->bank_name ?: ($record->payment_method ? ucfirst($record->payment_method) : 'N/A');
 
                 fputcsv($file, [
                     $index + 1,
@@ -273,22 +329,29 @@ class SalesController extends Controller
                     $record->user->user_id ?? 'N/A',
                     trim(($record->user->first_name ?? '') . ' ' . ($record->user->last_name ?? '')) ?: 'N/A',
                     ucfirst(str_replace('_', ' ', $record->user_role)),
+                    $record->user ? $record->user->currency : 'N/A',
                     $currencyCode,
                     $record->user->country ?? 'N/A',
                     optional($record->inventoryVoucher)->city ? (is_array($record->inventoryVoucher->city) ? implode(', ', $record->inventoryVoucher->city) : $record->inventoryVoucher->city) : 'N/A',
-                    $record->inventoryVoucher->voucher_variant ?? 'N/A',
+                    $record->inventoryVoucher->voucher_variant ?? $record->voucher_type ?? 'N/A',
                     $record->voucher_type,
                     $record->order_id,
                     $record->quantity,
-                    $currencyCode . ' ' . number_format($localValue, 2),
-                    $currencyCode . ' ' . number_format($unitValue, 2),
-                    $record->inventoryVoucher->taxes ?? '0.00',
-                    $record->bank_name ?? 'N/A',
-                    number_format($record->inventoryVoucher->currency_conversion_rate ?? 0, 4),
-                    $currencyCode . ' ' . number_format($fxGainLoss, 2),
+                    number_format($saleValueLocal, 2, '.', ''),
+                    number_format($unitValueLocal, 2, '.', ''),
+                    number_format($adminRate, 6, '.', ''),
+                    number_format($quotedSalesUsd, 2, '.', ''),
+                    number_format($settledSalesUsd, 2, '.', ''),
+                    number_format($unitPurchaseUsd, 2, '.', ''),
+                    number_format($totalPurchaseCostUsd, 2, '.', ''),
+                    number_format($grossProfitUsd, 2, '.', ''),
+                    number_format($gatewayFxVarianceUsd, 2, '.', ''),
+                    number_format($netRealizedProfitUsd, 2, '.', ''),
+                    number_format($record->tax_amount ?? 0, 2, '.', ''),
+                    $bank,
                     $record->referral_points ?? 0,
                     $record->points_redeemed ?? 0,
-                    number_format($record->bonus_amount ?? 0, 2)
+                    number_format($record->bonus_amount ?? 0, 2, '.', '')
                 ]);
             }
 

@@ -4,13 +4,29 @@
 <div class="container-fluid px-4 py-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
-            <h2 class="fw-bold mb-1">Add New Voucher Stock</h2>
-            <p class="text-muted mb-0">Fill in the details to add a new voucher to the inventory.</p>
+            @if(isset($duplicateFrom) && $duplicateFrom)
+                <h2 class="fw-bold mb-1">Duplicate Voucher (Draft)</h2>
+                <p class="text-muted mb-0">Duplicating settings from <strong>{{ $duplicateFrom->brand_name }} ({{ $duplicateFrom->sku_id }})</strong>. Upload codes to create stock.</p>
+            @else
+                <h2 class="fw-bold mb-1">Add New Voucher Stock</h2>
+                <p class="text-muted mb-0">Fill in the details to add a new voucher to the inventory.</p>
+            @endif
         </div>
         <a href="{{ route('inventory.index') }}" class="btn btn-light rounded-pill px-4">
             <i class="fas fa-arrow-left me-2"></i> Back to Inventory
         </a>
     </div>
+
+    @if(isset($duplicateFrom) && $duplicateFrom)
+    <div class="alert alert-info border-0 shadow-sm d-flex align-items-center mb-4" style="border-radius: 12px; background: #cff4fc; color: #055160;">
+        <i class="fas fa-copy me-3 fs-4 text-info"></i>
+        <div>
+            <strong class="d-block mb-1"><i class="fas fa-info-circle me-1"></i> Duplicating Voucher: {{ $duplicateFrom->sku_id }}</strong>
+            All settings, pricing, and point rules have been pre-filled. New SKU: <strong>{{ $suggestedSku }}</strong>. 
+            Nothing has been saved to the database yet. Simply enter new voucher codes below and click <strong>Save Voucher Stock</strong>, or click <strong>Cancel</strong> to discard.
+        </div>
+    </div>
+    @endif
 
     <div class="card border-0 shadow-sm" style="border-radius: 20px;">
         <div class="card-body p-4">
@@ -24,39 +40,39 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">SKU ID</label>
-                        <input type="text" name="sku_id" id="sku_id" class="form-control @error('sku_id') is-invalid @enderror" value="{{ old('sku_id') }}" readonly required>
+                        <input type="text" name="sku_id" id="sku_id" class="form-control @error('sku_id') is-invalid @enderror" value="{{ old('sku_id', $suggestedSku ?? '') }}" readonly required>
                         @error('sku_id') <div class="invalid-feedback">{{ $message }}</div> @enderror
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Brand Name</label>
-                        <input type="text" name="brand_name" id="brand_name" class="form-control" value="{{ old('brand_name') }}" required>
+                        <input type="text" name="brand_name" id="brand_name" class="form-control" value="{{ old('brand_name', $duplicateFrom->brand_name ?? '') }}" required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Country/Region</label>
                         <select name="country_region[]" id="country" class="form-select select2" multiple required>
-                            <option value="all">All Countries (GLB)</option>
+                            <option value="all" {{ (is_array(old('country_region', $duplicateFrom->country_region ?? null)) && in_array('all', old('country_region', $duplicateFrom->country_region ?? []))) ? 'selected' : '' }}>All Countries (GLB)</option>
                         </select>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">State</label>
                         <select name="state[]" id="state" class="form-select select2-state" multiple required>
-                            <option value="all">All States</option>
+                            <option value="all" {{ (is_array(old('state', $duplicateFrom->state ?? null)) && in_array('all', old('state', $duplicateFrom->state ?? []))) ? 'selected' : '' }}>All States</option>
                         </select>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">City</label>
                         <select name="city[]" id="city" class="form-select select2-city" multiple>
-                            <option value="all">All Cities</option>
+                            <option value="all" {{ (is_array(old('city', $duplicateFrom->city ?? null)) && in_array('all', old('city', $duplicateFrom->city ?? []))) ? 'selected' : '' }}>All Cities</option>
                         </select>
                     </div>
 
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Voucher Variant</label>
-                        <input type="text" name="voucher_variant" id="voucher_variant" class="form-control" value="{{ old('voucher_variant') }}" placeholder="e.g. Subscription">
+                        <input type="text" name="voucher_variant" id="voucher_variant" class="form-control" value="{{ old('voucher_variant', $duplicateFrom->voucher_variant ?? '') }}" placeholder="e.g. Subscription">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Voucher Type</label>
-                        <input name="voucher_type" class="form-control" value="{{ old('voucher_type') }}" required>
+                        <input name="voucher_type" class="form-control" value="{{ old('voucher_type', $duplicateFrom->voucher_type ?? '') }}" required>
                     </div>
                     <div class=" col-md-6">
                         <label class="form-label small fw-bold text-uppercase">Logo Image</label>
@@ -70,105 +86,203 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Purchase Invoice No.</label>
-                        <input type="text" name="purchase_invoice_no" class="form-control" value="{{ old('purchase_invoice_no') }}">
+                        <input type="text" name="purchase_invoice_no" class="form-control" value="{{ old('purchase_invoice_no', $duplicateFrom->purchase_invoice_no ?? '') }}">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Purchase Date</label>
-                        <input type="date" name="purchase_date" class="form-control" value="{{ old('purchase_date', date('Y-m-d')) }}" max="{{ date('Y-m-d') }}">
+                        <input type="date" name="purchase_date" class="form-control" value="{{ old('purchase_date', (isset($duplicateFrom) && $duplicateFrom && $duplicateFrom->purchase_date) ? (\Carbon\Carbon::parse($duplicateFrom->purchase_date)->format('Y-m-d')) : date('Y-m-d')) }}" max="{{ date('Y-m-d') }}">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Expiry Date</label>
-                        <input type="date" name="expiry_date" class="form-control" value="{{ old('expiry_date') }}" min="{{ date('Y-m-d') }}">
+                        <input type="date" name="expiry_date" class="form-control" value="{{ old('expiry_date', (isset($duplicateFrom) && $duplicateFrom && $duplicateFrom->expiry_date) ? (\Carbon\Carbon::parse($duplicateFrom->expiry_date)->format('Y-m-d')) : '') }}" min="{{ date('Y-m-d') }}">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Quantity</label>
+                        <label class="form-label small fw-bold text-uppercase d-flex justify-content-between align-items-center">
+                            <span>Quantity</span>
+                            <span id="qty_zero_badge" class="badge bg-danger-subtle text-danger {{ (int)old('quantity', 0) > 0 ? 'd-none' : '' }}">0 Quantity</span>
+                        </label>
                         <input type="number" name="quantity" class="form-control bg-light" value="{{ old('quantity', 0) }}" readonly required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Status</label>
                         <select name="status" class="form-select" required>
-                            <option value="IN STOCK">IN STOCK</option>
-
-                            <option value="OUT OF STOCK">OUT OF STOCK</option>
+                            <option value="IN STOCK" {{ old('status', 'OUT OF STOCK') == 'IN STOCK' ? 'selected' : '' }}>IN STOCK</option>
+                            <option value="OUT OF STOCK" {{ old('status', 'OUT OF STOCK') == 'OUT OF STOCK' ? 'selected' : '' }}>OUT OF STOCK</option>
                         </select>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Purchase Value</label>
-                        <input type="number" step="0.01" name="purchase_value" class="form-control" value="{{ old('purchase_value', 0) }}" required>
+                        <label class="form-label small fw-bold text-uppercase d-flex align-items-center justify-content-between">
+                            <span>Purchase Value</span>
+                            <span id="purchase_val_usd_bracket" class="text-primary fw-normal">($0.00 USD)</span>
+                        </label>
+                        <input type="number" step="0.01" name="purchase_value" class="form-control" value="{{ old('purchase_value', $duplicateFrom->purchase_value ?? 0) }}" required>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Purchase Value / Unit</label>
-                        <input type="number" step="0.01" name="purchase_value_per_unit" class="form-control bg-light" value="{{ old('purchase_value_per_unit', 0) }}" readonly required>
+                        <label class="form-label small fw-bold text-uppercase d-flex align-items-center justify-content-between">
+                            <span>Purchase Value / Unit</span>
+                            <span id="purchase_unit_usd_bracket" class="text-primary fw-normal">($0.00 USD)</span>
+                        </label>
+                        <input type="number" step="0.01" name="purchase_value_per_unit" class="form-control bg-light" value="{{ old('purchase_value_per_unit', $duplicateFrom->purchase_value_per_unit ?? 0) }}" readonly required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label small fw-bold text-uppercase">Taxes</label>
-                        <input type="number" step="0.01" name="taxes" class="form-control" value="{{ old('taxes', 0) }}">
+                        <input type="number" step="0.01" name="taxes" class="form-control" value="{{ old('taxes', $duplicateFrom->taxes ?? 0) }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label small fw-bold text-uppercase">Bank Name</label>
-                        <input type="text" name="bank" class="form-control" value="{{ old('bank') }}">
+                        <input type="text" name="bank" class="form-control" value="{{ old('bank', $duplicateFrom->bank ?? '') }}">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label small fw-bold text-uppercase">Purchase Currency</label>
-                        <input type="text" name="local_currency" class="form-control" value="{{ old('local_currency') }}">
+                        <select name="local_currency" id="local_currency" class="form-select @error('local_currency') is-invalid @enderror">
+                            <option value="">-- Select Currency --</option>
+                            @foreach($currencies ?? \App\Helpers\CurrencyHelper::getAllCurrencies() as $code => $c)
+                                <option value="{{ $code }}" {{ old('local_currency', $duplicateFrom->local_currency ?? 'USD') == $code ? 'selected' : '' }}>
+                                    {{ $code }} - {{ $c['name'] }} ({{ $c['symbol'] }})
+                                </option>
+                            @endforeach
+                        </select>
+                        <div id="purchase_currency_error" class="text-danger small mt-1 fw-semibold {{ $errors->has('local_currency') ? '' : 'd-none' }}">
+                            <i class="fas fa-exclamation-triangle me-1"></i> <span id="purchase_error_msg">{{ $errors->first('local_currency') ?? 'First set currency in Currency Rates' }}</span>
+                            <a href="{{ route('settings.exchange-rates') }}" target="_blank" class="ms-1 fw-bold text-danger text-decoration-underline">Currency Rates &rarr;</a>
+                        </div>
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Currency Conv. @</label>
-                        <input type="number" step="0.000001" name="currency_conversion_rate" id="conversion_rate" class="form-control" value="{{ old('currency_conversion_rate', 1.0) }}">
-                        <div id="conversion_explanation" class="small text-muted mt-1 fw-bold">1 <span class="primary_curr_label">PKR</span> = <span class="rate_label">1.000000</span> <span class="local_curr_label">---</span></div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold text-uppercase text-muted">
+                            <i class="fas fa-coins me-1 text-primary"></i> Purchase Value (USD)
+                        </label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light text-muted fw-bold">$</span>
+                            <input type="text" id="base_purchase_value" class="form-control bg-light fw-bold text-primary" value="0.00" readonly>
+                        </div>
+                        <input type="hidden" name="currency_conversion_rate" id="conversion_rate" value="{{ old('currency_conversion_rate', $duplicateFrom->currency_conversion_rate ?? 1.0) }}">
+                        <div class="small mt-1 text-muted d-flex align-items-center justify-content-between">
+                            <span>Admin Rate: <strong id="admin_rate_badge">1.000000</strong></span>
+                            <span class="badge bg-secondary-subtle text-secondary" id="rate_ratio_label">1 USD = 1.000000 USD</span>
+                        </div>
                     </div>
 
                     <!-- Sale & Points Info -->
                     <div class="col-12 mt-5">
-                        <h5 class="fw-bold mb-3 text-primary">Sale Price & Rewards</h5>
-                        <hr>
+                        <h5 class="fw-bold mb-3 text-primary d-flex align-items-center">
+                            <i class="fas fa-tags me-2"></i> Sale Price & Rewards
+                        </h5>
+                        <hr class="mt-0">
                     </div>
 
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold text-uppercase text-primary">Sale Currency</label>
-                        <input type="text" name="currency" id="currency" class="form-control border-primary" value="{{ old('currency', 'PKR') }}" required>
+                        <label class="form-label small fw-bold text-uppercase text-primary d-flex align-items-center" style="min-height: 20px;">Sale Currency</label>
+                        <select name="currency" id="currency" class="form-select border-primary @error('currency') is-invalid @enderror" required>
+                            <option value="">-- Select Currency --</option>
+                            @foreach($currencies ?? \App\Helpers\CurrencyHelper::getAllCurrencies() as $code => $c)
+                                <option value="{{ $code }}" {{ old('currency', $duplicateFrom->currency ?? 'PKR') == $code ? 'selected' : '' }}>
+                                    {{ $code }} - {{ $c['name'] }} ({{ $c['symbol'] }})
+                                </option>
+                            @endforeach
+                        </select>
+                        <div id="sale_currency_error" class="text-danger small mt-1 fw-semibold {{ $errors->has('currency') ? '' : 'd-none' }}">
+                            <i class="fas fa-exclamation-triangle me-1"></i> <span id="sale_error_msg">{{ $errors->first('currency') ?? 'First set currency in Currency Rates' }}</span>
+                            <a href="{{ route('settings.exchange-rates') }}" target="_blank" class="ms-1 fw-bold text-danger text-decoration-underline">Currency Rates &rarr;</a>
+                        </div>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold text-uppercase text-success">Reseller Agent /Agent Sale Price</label>
-                        <input type="number" step="0.01" name="agent_sale_price" class="form-control border-success" value="{{ old('agent_sale_price', 0) }}" required>
+                        <label class="form-label small fw-bold text-uppercase text-success d-flex align-items-center justify-content-between" style="min-height: 20px;">
+                            <span>Agent / Reseller Price (Per Unit)</span>
+                            <span id="agent_price_usd_bracket" class="fw-normal text-success">($0.00 USD)</span>
+                        </label>
+                        <input type="number" step="0.01" name="agent_sale_price" class="form-control border-success" value="{{ old('agent_sale_price', $duplicateFrom->agent_sale_price ?? 0) }}" required>
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold text-uppercase text-success">Student Sale Price</label>
-                        <input type="number" step="0.01" name="student_sale_price" class="form-control border-success" value="{{ old('student_sale_price', 0) }}" required>
+                        <label class="form-label small fw-bold text-uppercase text-success d-flex align-items-center justify-content-between" style="min-height: 20px;">
+                            <span>Student Sale Price (Per Unit)</span>
+                            <span id="student_price_usd_bracket" class="fw-normal text-success">($0.00 USD)</span>
+                        </label>
+                        <input type="number" step="0.01" name="student_sale_price" class="form-control border-success" value="{{ old('student_sale_price', $duplicateFrom->student_sale_price ?? 0) }}" required>
                     </div>
 
-
-                    <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Referral Points (Reseller)</label>
-                        <input type="number" name="referral_points_reseller" class="form-control" value="{{ old('referral_points_reseller', 0) }}">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Agent Ref. Points / Unit</label>
-                        <input type="number" name="agent_referral_points_per_unit" class="form-control" value="{{ old('agent_referral_points_per_unit', 0) }}">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Agent Bonus Points / Unit</label>
-                        <input type="number" name="agent_bonus_points_per_unit" class="form-control" value="{{ old('agent_bonus_points_per_unit', 0) }}">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Student Ref. Points / Unit</label>
-                        <input type="number" name="student_referral_points_per_unit" class="form-control" value="{{ old('student_referral_points_per_unit', 0) }}">
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label small fw-bold text-uppercase">Student Bonus Points / Unit</label>
-                        <input type="number" name="student_bonus_points_per_unit" class="form-control" value="{{ old('student_bonus_points_per_unit', 0) }}">
+                    <!-- Rewards & Points Configuration Box -->
+                    <div class="col-12 mt-3">
+                        <div class="p-3 bg-light rounded-4 border">
+                            <h6 class="fw-bold small text-uppercase text-muted mb-3 d-flex align-items-center">
+                                <i class="fas fa-gift text-primary me-2"></i> Reward & Bonus Points Configuration
+                            </h6>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-uppercase text-secondary">Referral Points (Reseller)</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white border-end-0"><i class="fas fa-handshake text-muted"></i></span>
+                                        <input type="number" name="referral_points_reseller" class="form-control border-start-0 bg-white" value="{{ old('referral_points_reseller', $duplicateFrom->referral_points_reseller ?? 0) }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-uppercase text-secondary">Agent Ref. Points / Unit</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white border-end-0"><i class="fas fa-user-tag text-muted"></i></span>
+                                        <input type="number" name="agent_referral_points_per_unit" class="form-control border-start-0 bg-white" value="{{ old('agent_referral_points_per_unit', $duplicateFrom->agent_referral_points_per_unit ?? 0) }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label small fw-bold text-uppercase text-secondary">Agent Bonus Points / Unit</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white border-end-0"><i class="fas fa-star text-warning"></i></span>
+                                        <input type="number" name="agent_bonus_points_per_unit" class="form-control border-start-0 bg-white" value="{{ old('agent_bonus_points_per_unit', $duplicateFrom->agent_bonus_points_per_unit ?? 0) }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-uppercase text-secondary">Student Ref. Points / Unit</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white border-end-0"><i class="fas fa-user-graduate text-muted"></i></span>
+                                        <input type="number" name="student_referral_points_per_unit" class="form-control border-start-0 bg-white" value="{{ old('student_referral_points_per_unit', $duplicateFrom->student_referral_points_per_unit ?? 0) }}">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label small fw-bold text-uppercase text-secondary">Student Bonus Points / Unit</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text bg-white border-end-0"><i class="fas fa-award text-warning"></i></span>
+                                        <input type="number" name="student_bonus_points_per_unit" class="form-control border-start-0 bg-white" value="{{ old('student_bonus_points_per_unit', $duplicateFrom->student_bonus_points_per_unit ?? 0) }}">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="col-12 mt-4">
-                        <label class="form-label small fw-bold text-uppercase">Voucher Codes / Upload Info</label>
-                        <textarea name="upload_vouchers" class="form-control" rows="4" placeholder="Enter voucher codes separated by comma...">{{ old('upload_vouchers') }}</textarea>
-                        <small class="text-muted">Enter multiple codes separated by commas (e.g., CODE1, CODE2, CODE3)</small>
+                        <label class="form-label small fw-bold text-uppercase d-flex align-items-center justify-content-between">
+                            <span>Voucher Codes / Upload Info</span>
+                            <span id="voucher_codes_badge" class="badge bg-secondary-subtle text-secondary">0 codes</span>
+                        </label>
+                        <textarea name="upload_vouchers" id="upload_vouchers" class="form-control @error('upload_vouchers') is-invalid @enderror" rows="4" placeholder="Enter voucher codes separated by commas, spaces, or new lines...">{{ old('upload_vouchers') }}</textarea>
+                        @error('upload_vouchers')
+                            <div class="invalid-feedback d-block fw-semibold mt-1">
+                                <i class="fas fa-exclamation-circle me-1"></i> {{ $message }}
+                            </div>
+                        @enderror
+                        <div id="duplicate_codes_warning" class="alert alert-danger py-2 px-3 mt-2 d-none" style="border-radius: 10px;">
+                            <div class="d-flex align-items-start">
+                                <i class="fas fa-exclamation-triangle me-2 fs-5 mt-1"></i>
+                                <div>
+                                    <strong class="d-block">Duplicate Voucher Code Detected!</strong>
+                                    <div id="duplicate_codes_list" class="small mt-1 fw-medium"></div>
+                                    <div class="small text-danger-emphasis mt-1">Each voucher code must be unique across all vouchers in the system. Please remove duplicates before saving.</div>
+                                </div>
+                            </div>
+                        </div>
+                        <small class="text-muted">Enter multiple codes separated by commas, spaces, or new lines (e.g., CODE1, CODE2, CODE3)</small>
                     </div>
 
                     <div class="col-12 text-end mt-4">
                         <hr>
-                        <button type="reset" class="btn btn-light rounded-pill px-5">Reset</button>
-                        <button type="submit" class="btn btn-primary rounded-pill px-5">Save Voucher Stock</button>
+                        <div id="zero_quantity_alert" class="alert alert-warning text-start py-2 px-3 mb-3 {{ (int)old('quantity', 0) > 0 ? 'd-none' : '' }}" style="border-radius: 10px;">
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-exclamation-triangle me-2 fs-5 text-warning"></i>
+                                <div>
+                                    <strong>Save Voucher Stock Disabled (0 Quantity):</strong>
+                                    <span>A voucher cannot be created with 0 quantity. Please upload at least 1 voucher code in the <strong>Voucher Codes / Upload Info</strong> box above to enable "Save Voucher Stock".</span>
+                                </div>
+                            </div>
+                        </div>
+                        <a href="{{ route('inventory.index') }}" class="btn btn-light rounded-pill px-5 me-2">Cancel</a>
+                        <button type="submit" id="save_voucher_btn" class="btn btn-primary rounded-pill px-5" {{ (int)old('quantity', 0) <= 0 ? 'disabled' : '' }}>Save Voucher Stock</button>
                     </div>
                 </div>
             </form>
@@ -179,6 +293,8 @@
 <script>
     $(document).ready(function() {
         const nextId = "{{ $next_id }}";
+        const suggestedSku = "{{ $suggestedSku ?? '' }}";
+        let preserveSuggestedSku = suggestedSku !== '';
 
         $('.select2').select2({
             placeholder: "Select Country/Region",
@@ -198,6 +314,9 @@
         });
 
         function generateSKU() {
+            if (preserveSuggestedSku) {
+                return;
+            }
             let brand = $('#brand_name').val().trim();
             let variant = $('#voucher_variant').val().trim();
             let country = $('#country').val(); // Array if multiple select
@@ -247,7 +366,13 @@
             }
         }
 
-        $('#brand_name, #voucher_variant, #country').on('input change', function() {
+        $('#brand_name, #voucher_variant').on('input', function() {
+            preserveSuggestedSku = false;
+            generateSKU();
+        });
+
+        $('#country').on('select2:select select2:unselect select2:clear', function() {
+            preserveSuggestedSku = false;
             generateSKU();
         });
 
@@ -261,11 +386,70 @@
             }
 
             $('input[name="purchase_value_per_unit"]').val(unitValue.toFixed(2));
+            updateConversionCalculation();
         }
 
         $('input[name="quantity"], input[name="purchase_value"]').on('input', function() {
             calculateUnitValue();
         });
+
+        const existingCodesMap = @json($existingCodesMap ?? []);
+        let voucherCodesValidationState = {
+            hasDuplicates: false,
+            errorMessage: ''
+        };
+
+        function validateVoucherCodes(codes) {
+            let seen = {};
+            let duplicates = [];
+            let crossConflicts = [];
+
+            for (let code of codes) {
+                let upper = code.toUpperCase();
+                if (seen[upper]) {
+                    if (!duplicates.includes(code)) {
+                        duplicates.push(code);
+                    }
+                } else {
+                    seen[upper] = true;
+                }
+
+                if (existingCodesMap[upper]) {
+                    crossConflicts.push({ code: code, sku: existingCodesMap[upper] });
+                }
+            }
+
+            let errors = [];
+            if (duplicates.length > 0) {
+                let sample = duplicates.slice(0, 5).join(', ');
+                if (duplicates.length > 5) sample += ' and ' + (duplicates.length - 5) + ' more';
+                errors.push('Duplicate code(s) in input: [' + sample + ']');
+            }
+            if (crossConflicts.length > 0) {
+                let sampleConflict = crossConflicts.slice(0, 3).map(c => "'" + c.code + "' (already uploaded in SKU: " + c.sku + ")").join(', ');
+                if (crossConflicts.length > 3) sampleConflict += ' and ' + (crossConflicts.length - 3) + ' more';
+                errors.push('Already exists in inventory: ' + sampleConflict);
+            }
+
+            if (errors.length > 0) {
+                voucherCodesValidationState.hasDuplicates = true;
+                voucherCodesValidationState.errorMessage = errors.join(' | ');
+                $('#duplicate_codes_list').text(voucherCodesValidationState.errorMessage);
+                $('#duplicate_codes_warning').removeClass('d-none');
+                $('#upload_vouchers').addClass('is-invalid');
+                $('#voucher_codes_badge').removeClass('bg-secondary-subtle text-secondary bg-success-subtle text-success').addClass('bg-danger-subtle text-danger').text(codes.length + ' codes (duplicates detected)');
+            } else {
+                voucherCodesValidationState.hasDuplicates = false;
+                voucherCodesValidationState.errorMessage = '';
+                $('#duplicate_codes_warning').addClass('d-none');
+                $('#upload_vouchers').removeClass('is-invalid');
+                if (codes.length > 0) {
+                    $('#voucher_codes_badge').removeClass('bg-secondary-subtle text-secondary bg-danger-subtle text-danger').addClass('bg-success-subtle text-success').text(codes.length + ' codes valid');
+                } else {
+                    $('#voucher_codes_badge').removeClass('bg-success-subtle text-success bg-danger-subtle text-danger').addClass('bg-secondary-subtle text-secondary').text('0 codes');
+                }
+            }
+        }
 
         function formatVouchers(val) {
             // Replace newlines, tabs, and spaces with a comma
@@ -275,11 +459,15 @@
             // Trim leading/trailing commas
             cleaned = cleaned.replace(/^,|,$/g, '');
 
-            // Calculate quantity based on number of codes
-            let codes = cleaned.split(',').filter(code => code.trim().length > 0);
+            let codes = cleaned.split(',').map(c => c.trim()).filter(c => c.length > 0);
             let count = codes.length;
 
+            validateVoucherCodes(codes);
+
             $('input[name="quantity"]').val(count).trigger('input');
+            if (count > 0 && $('select[name="status"]').val() === 'OUT OF STOCK') {
+                $('select[name="status"]').val('IN STOCK');
+            }
 
             // For display, use ", " for better readability
             let displayValue = codes.join(', ');
@@ -290,30 +478,171 @@
             };
         }
 
-        // Better handling for paste
-        $('textarea[name="upload_vouchers"]').on('input paste', function(e) {
+        $('#upload_vouchers').on('input', function() {
+            let rawVal = $(this).val();
+            let codes = rawVal.split(/[, \n\r\t]+/).map(c => c.trim()).filter(c => c.length > 0);
+            $('input[name="quantity"]').val(codes.length).trigger('input');
+            if (codes.length > 0 && $('select[name="status"]').val() === 'OUT OF STOCK') {
+                $('select[name="status"]').val('IN STOCK');
+            }
+            validateVoucherCodes(codes);
+        });
+
+        $('#upload_vouchers').on('blur paste', function(e) {
             let self = this;
             setTimeout(function() {
                 let res = formatVouchers($(self).val());
-                $(self).val(res.display);
+                if (e.type === 'paste' || $(self).val().includes('\n') || $(self).val().includes('\t')) {
+                    $(self).val(res.display);
+                }
             }, 100);
         });
 
-        function updateConversionExplanation() {
-            let primary = $('#currency').val() || '---';
-            let local = $('input[name="local_currency"]').val() || '---';
-            let rate = $('#conversion_rate').val() || '1.0';
-
-            $('.primary_curr_label').text(primary);
-            $('.local_curr_label').text(local);
-            $('.rate_label').text(parseFloat(rate).toFixed(6));
+        // Initialize validation on page load if old value exists
+        if ($('#upload_vouchers').val()) {
+            formatVouchers($('#upload_vouchers').val());
         }
 
-        $('#currency, input[name="local_currency"], #conversion_rate').on('input change', function() {
-            updateConversionExplanation();
+        const exchangeRates = @json($exchangeRates ?? \App\Services\CurrencyService::getAllActiveRates());
+        const baseCurrency = @json($baseCurrency ?? 'USD');
+
+        function isRateDefined(curr) {
+            if (!curr) return true;
+            curr = curr.trim().toUpperCase();
+            if (curr === baseCurrency) return true;
+            return (exchangeRates[curr] !== undefined && parseFloat(exchangeRates[curr]) > 0);
+        }
+
+        function updateConversionCalculation() {
+            let purchaseCurr = ($('#local_currency').val() || '').trim().toUpperCase();
+            let saleCurr = ($('#currency').val() || '').trim().toUpperCase();
+            let purchaseRateOk = isRateDefined(purchaseCurr);
+            let saleRateOk = isRateDefined(saleCurr);
+
+            // 1. Purchase Currency check
+            if (!purchaseRateOk) {
+                $('#local_currency').addClass('is-invalid');
+                $('#purchase_error_msg').html('First set <strong>' + purchaseCurr + '</strong> in Currency Rates');
+                $('#purchase_currency_error').removeClass('d-none');
+
+                $('#conversion_rate').val('0');
+                $('#admin_rate_badge').html('<span class="badge bg-danger">Not Set</span>');
+                $('#rate_ratio_label').html('<span class="text-danger fw-bold">Rate Missing in Currency Rates</span>');
+                $('#base_purchase_value').val('0.00');
+                $('#purchase_val_usd_bracket').text('($0.00 USD)');
+                $('#purchase_unit_usd_bracket').text('($0.00 USD)');
+            } else {
+                $('#local_currency').removeClass('is-invalid');
+                $('#purchase_currency_error').addClass('d-none');
+
+                let curr = purchaseCurr || baseCurrency;
+                let rate = exchangeRates[curr] !== undefined ? parseFloat(exchangeRates[curr]) : 1.0;
+                
+                $('#conversion_rate').val(rate.toFixed(6));
+                $('#admin_rate_badge').text(rate.toFixed(6));
+                $('#rate_ratio_label').html('1 ' + curr + ' = ' + rate.toFixed(6) + ' ' + baseCurrency);
+
+                let purchaseVal = parseFloat($('input[name="purchase_value"]').val()) || 0;
+                let baseVal = purchaseVal * rate;
+                $('#base_purchase_value').val(baseVal.toFixed(2));
+                $('#purchase_val_usd_bracket').text('($' + baseVal.toFixed(2) + ' USD)');
+
+                let purchaseUnitVal = parseFloat($('input[name="purchase_value_per_unit"]').val()) || 0;
+                let baseUnitVal = purchaseUnitVal * rate;
+                $('#purchase_unit_usd_bracket').text('($' + baseUnitVal.toFixed(2) + ' USD)');
+            }
+
+            // 2. Sale Currency check
+            if (!saleRateOk) {
+                $('#currency').addClass('is-invalid');
+                $('#sale_error_msg').html('First set <strong>' + saleCurr + '</strong> in Currency Rates');
+                $('#sale_currency_error').removeClass('d-none');
+                $('#agent_price_usd_bracket').text('($0.00 USD)');
+                $('#student_price_usd_bracket').text('($0.00 USD)');
+            } else {
+                $('#currency').removeClass('is-invalid');
+                $('#sale_currency_error').addClass('d-none');
+
+                let curr = saleCurr || baseCurrency;
+                let sRate = exchangeRates[curr] !== undefined ? parseFloat(exchangeRates[curr]) : 1.0;
+
+                let agentPrice = parseFloat($('input[name="agent_sale_price"]').val()) || 0;
+                let agentPriceUsd = agentPrice * sRate;
+                $('#agent_price_usd_bracket').text('($' + agentPriceUsd.toFixed(2) + ' USD)');
+
+                let studentPrice = parseFloat($('input[name="student_sale_price"]').val()) || 0;
+                let studentPriceUsd = studentPrice * sRate;
+                $('#student_price_usd_bracket').text('($' + studentPriceUsd.toFixed(2) + ' USD)');
+            }
+
+            // 3. Quantity check: vouchers cannot be created with 0 quantity
+            let currentQty = parseInt($('input[name="quantity"]').val()) || 0;
+            let hasValidQty = currentQty > 0;
+
+            if (!hasValidQty) {
+                $('#zero_quantity_alert').removeClass('d-none');
+                $('#qty_zero_badge').removeClass('d-none');
+            } else {
+                $('#zero_quantity_alert').addClass('d-none');
+                $('#qty_zero_badge').addClass('d-none');
+            }
+
+            // 4. Submit button state
+            let canSubmit = purchaseRateOk && saleRateOk && hasValidQty && !voucherCodesValidationState.hasDuplicates;
+            let $btn = $('#save_voucher_btn, button[type="submit"]');
+            if (!canSubmit) {
+                let reason = 'Please complete all required fields';
+                if (!hasValidQty) {
+                    reason = 'A voucher cannot be created with 0 quantity. Please upload at least 1 voucher code.';
+                } else if (!purchaseRateOk || !saleRateOk) {
+                    reason = 'Please set missing currency in Currency Rates first';
+                } else if (voucherCodesValidationState.hasDuplicates) {
+                    reason = 'Please resolve duplicate voucher codes before saving';
+                }
+                $btn.prop('disabled', true).addClass('opacity-50').attr('title', reason);
+            } else {
+                $btn.prop('disabled', false).removeClass('opacity-50').removeAttr('title');
+            }
+        }
+
+        $('#local_currency, #currency, input[name="purchase_value"], input[name="purchase_value_per_unit"], input[name="agent_sale_price"], input[name="student_sale_price"]').on('input change', function() {
+            updateConversionCalculation();
         });
 
-        updateConversionExplanation();
+        $('form').on('submit', function(e) {
+            let currentQty = parseInt($('input[name="quantity"]').val()) || 0;
+            if (currentQty <= 0) {
+                e.preventDefault();
+                alert("A voucher cannot be created with 0 quantity. Please upload at least 1 voucher code in 'Voucher Codes / Upload Info' first.");
+                $('#upload_vouchers').focus();
+                return false;
+            }
+
+            let purchaseCurr = ($('#local_currency').val() || '').trim().toUpperCase();
+            let saleCurr = ($('#currency').val() || '').trim().toUpperCase();
+
+            if (!isRateDefined(purchaseCurr)) {
+                e.preventDefault();
+                alert("Please first set '" + purchaseCurr + "' in Currency Rates.");
+                $('#local_currency').focus();
+                return false;
+            }
+            if (!isRateDefined(saleCurr)) {
+                e.preventDefault();
+                alert("Please first set '" + saleCurr + "' in Currency Rates.");
+                $('#currency').focus();
+                return false;
+            }
+
+            if (voucherCodesValidationState.hasDuplicates) {
+                e.preventDefault();
+                alert("Cannot save voucher stock:\n\n" + voucherCodesValidationState.errorMessage + "\n\nPlease remove duplicate codes before proceeding.");
+                $('#upload_vouchers').focus();
+                return false;
+            }
+        });
+
+        updateConversionCalculation();
     });
 </script>
 
@@ -328,25 +657,28 @@
         const countrySelect = $("#country");
         const stateSelect = $("#state");
         const citySelect = $("#city");
+        const initialCountries = {!! json_encode(old('country_region', $duplicateFrom->country_region ?? [])) !!};
+        const initialState = {!! json_encode(old('state', $duplicateFrom->state ?? [])) !!};
+        const initialCity = {!! json_encode(old('city', $duplicateFrom->city ?? [])) !!};
 
         // Populate Countries
         const countries = Country.getAllCountries();
         countries.forEach(country => {
-            const option = new Option(country.name, country.name, false, false);
+            const isSelected = Array.isArray(initialCountries) && initialCountries.includes(country.name);
+            const option = new Option(country.name, country.name, isSelected, isSelected);
             option.dataset.code = country.isoCode;
             countrySelect.append(option);
         });
 
-        countrySelect.trigger('change');
-
-        function updateStates(countryCode) {
-            const allOption = new Option('All States', 'all', true, true);
+        function updateStates(countryCode, selectedStates = []) {
+            const isAllSelected = Array.isArray(selectedStates) && selectedStates.includes('all');
+            const allOption = new Option('All States', 'all', isAllSelected, isAllSelected);
             stateSelect.empty().append(allOption);
-            citySelect.empty().append('<option value="all">All Cities</option>');
             if (countryCode) {
                 const states = State.getStatesOfCountry(countryCode);
                 states.forEach(state => {
-                    const option = new Option(state.name, state.name, false, false);
+                    const isSelected = Array.isArray(selectedStates) && selectedStates.includes(state.name);
+                    const option = new Option(state.name, state.name, isSelected, isSelected);
                     option.dataset.code = state.isoCode;
                     stateSelect.append(option);
                 });
@@ -354,18 +686,19 @@
             stateSelect.trigger('change.select2');
         }
 
-        function updateCities(countryCode, stateCode) {
-            citySelect.html('<option value="all">All Cities</option>');
+        function updateCities(countryCode, stateCode, selectedCities = []) {
+            const isAllSelected = Array.isArray(selectedCities) && selectedCities.includes('all');
+            const allOption = new Option('All Cities', 'all', isAllSelected, isAllSelected);
+            citySelect.empty().append(allOption);
             if (countryCode && stateCode) {
                 const cities = City.getCitiesOfState(countryCode, stateCode);
                 cities.forEach(city => {
-                    const option = document.createElement('option');
-                    option.value = city.name;
-                    option.textContent = city.name;
+                    const isSelected = Array.isArray(selectedCities) && selectedCities.includes(city.name);
+                    const option = new Option(city.name, city.name, isSelected, isSelected);
                     citySelect.append(option);
                 });
-                citySelect.trigger('change.select2');
             }
+            citySelect.trigger('change.select2');
         }
 
         // Country Change Event
@@ -375,14 +708,12 @@
             // Handle All Countries logic
             if (selectedValues && selectedValues.includes('all')) {
                 if (selectedValues.length > 1) {
-                    // If 'all' is selected along with others, just keep 'all'
                     $(this).val(['all']).trigger('change.select2');
                     return;
                 }
             }
 
             if (!selectedValues || selectedValues.length !== 1 || selectedValues.includes('all')) {
-                // Disable state and city if multiple countries or all countries or no country selected
                 stateSelect.prop('disabled', true).trigger('change.select2');
                 citySelect.prop('disabled', true).trigger('change.select2');
                 stateSelect.html('<option value="">State Disabled (Multi/All)</option>');
@@ -391,9 +722,18 @@
                 stateSelect.prop('disabled', false).trigger('change.select2');
                 citySelect.prop('disabled', false).trigger('change.select2');
                 const countryCode = $(this).find('option:selected').data('code');
-                updateStates(countryCode);
+                const selectedCountryName = $(this).val()[0];
+                const initialCountryName = Array.isArray(initialCountries) && initialCountries.length > 0 ? initialCountries[0] : null;
+                if (selectedCountryName === initialCountryName) {
+                    updateStates(countryCode, Array.isArray(initialState) ? initialState : [initialState]);
+                } else {
+                    updateStates(countryCode, ['all']);
+                }
             }
         });
+
+        // Trigger initial country change
+        countrySelect.trigger('change');
 
         // State Change Event
         stateSelect.on('change', function() {
@@ -402,7 +742,6 @@
             // Handle All States logic
             if (selectedStates && selectedStates.includes('all')) {
                 if (selectedStates.length > 1) {
-                    // If 'all' is selected along with others, just keep 'all'
                     $(this).val(['all']).trigger('change.select2');
                     return;
                 }
@@ -412,7 +751,6 @@
             const countryCode = countryOption ? countryOption.dataset.code : null;
 
             if (!selectedStates || selectedStates.length !== 1 || selectedStates.includes('all')) {
-                // Disable city if multiple states or all states or no state selected
                 citySelect.prop('disabled', true).trigger('change.select2');
                 citySelect.html('<option value="">City Disabled (Multi/All)</option>');
             } else {
@@ -420,15 +758,23 @@
                 const stateOption = $(this).find('option:selected')[0];
                 const stateCode = stateOption ? stateOption.dataset.code : null;
                 if (countryCode && stateCode) {
-                    updateCities(countryCode, stateCode);
+                    const selectedStateName = $(this).val()[0];
+                    const initialSingleState = Array.isArray(initialState) && initialState.length > 0 ? initialState[0] : null;
+                    if (selectedStateName === initialSingleState) {
+                        updateCities(countryCode, stateCode, Array.isArray(initialCity) ? initialCity : [initialCity]);
+                    } else {
+                        updateCities(countryCode, stateCode, ['all']);
+                    }
                 }
             }
         });
-        
+
+        // Trigger initial state change
+        stateSelect.trigger('change');
+
         // City Change Event
         citySelect.on('change', function() {
             const selectedCities = $(this).val();
-            // Handle All Cities logic
             if (selectedCities && selectedCities.includes('all')) {
                 if (selectedCities.length > 1) {
                     $(this).val(['all']).trigger('change.select2');

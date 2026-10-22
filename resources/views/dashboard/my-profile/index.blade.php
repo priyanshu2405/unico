@@ -61,9 +61,16 @@
                         <h6 class="fw-bold mb-0">Balance & Points</h6>
                     </div>
                     <div class="card-body px-4 pb-4">
+                        @php
+                            $uCurr = $user->currency ?? 'USD';
+                            $uBalLocal = \App\Services\CurrencyService::convert((float)($user->wallet_balance ?? 0), 'USD', $uCurr);
+                        @endphp
                         <div class="p-3 bg-light rounded-3 mb-3">
                             <div class="text-muted small mb-1">Wallet Balance</div>
-                            <div class="h5 fw-bold mb-0 text-primary">RS {{ number_format($user->wallet_balance, 2) }}</div>
+                            <div class="h5 fw-bold mb-0 text-primary">{{ $uCurr }} {{ number_format($uBalLocal, 2) }}</div>
+                            @if($uCurr !== 'USD')
+                                <small class="text-muted">($ {{ number_format($user->wallet_balance, 2) }} USD)</small>
+                            @endif
                         </div>
                         <div class="row g-2">
                             <div class="col-6">

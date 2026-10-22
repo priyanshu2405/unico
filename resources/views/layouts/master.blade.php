@@ -136,6 +136,21 @@
             sidebar.classList.add('sidebar-hidden');
             overlay.classList.remove('overlay-active');
         });
+
+        // Prevent CSV & report export downloads from being cached by browser or proxy
+        $(document).on('click', 'a[href*="export"], a[href*="download-pdf"], a[id*="export"]', function(e) {
+            let href = $(this).attr('href');
+            if (href && href !== '#' && !href.startsWith('javascript:')) {
+                try {
+                    let url = new URL(href, window.location.origin);
+                    url.searchParams.set('_t', Date.now());
+                    $(this).attr('href', url.toString());
+                } catch (err) {
+                    let sep = href.indexOf('?') !== -1 ? '&' : '?';
+                    $(this).attr('href', href + sep + '_t=' + Date.now());
+                }
+            }
+        });
     </script>
     @stack('scripts')
 

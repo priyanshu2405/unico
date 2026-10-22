@@ -152,7 +152,8 @@
             $('#m-brand-name').text(order.inventory_voucher ? order.inventory_voucher.brand_name : 'N/A');
             $('#m-voucher-type').text(order.voucher_type);
             $('#m-quantity').text(order.quantity);
-            $('#m-amount').text('RS ' + parseFloat(order.amount).toLocaleString());
+            const orderCurrency = order.currency || (order.inventory_voucher ? order.inventory_voucher.currency : 'USD');
+            $('#m-amount').text(orderCurrency + ' ' + parseFloat(order.amount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}));
             $('#m-date').text(new Date(order.created_at).toLocaleDateString());
 
             let statusBadge = '';

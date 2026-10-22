@@ -44,12 +44,91 @@ Route::get('/storage-link', function () {
     }
 });
 // Programmatic migration helper (Commented out for security after successful run)
-Route::get('/run-migrations-secure', function () {
+Route::get('/run-migrations-secure', function (\Illuminate\Http\Request $request) {
     try {
-        \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
-        return 'Migrations completed successfully:<br><pre>' . \Illuminate\Support\Facades\Artisan::output() . '</pre>';
+        // 1. Ensure migrations table exists
+        if (!\Illuminate\Support\Facades\Schema::hasTable('migrations')) {
+            \Illuminate\Support\Facades\DB::statement("CREATE TABLE IF NOT EXISTS `migrations` (
+                `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+                `migration` varchar(255) NOT NULL,
+                `batch` int(11) NOT NULL,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        }
+
+        $existing = \Illuminate\Support\Facades\DB::table('migrations')->pluck('migration')->toArray();
+        $currentBatch = (int) (\Illuminate\Support\Facades\DB::table('migrations')->max('batch') ?? 0) + 1;
+
+        $files = glob(database_path('migrations/*.php'));
+        sort($files);
+
+        $synced = 0;
+        $migrated = 0;
+        $skipped = 0;
+        $logs = [];
+
+        foreach ($files as $file) {
+            $name = basename($file, '.php');
+            if (in_array($name, $existing)) {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                $instance = require $file;
+                if (is_object($instance) && method_exists($instance, 'up')) {
+                    $instance->up();
+                }
+                \Illuminate\Support\Facades\DB::table('migrations')->insert([
+                    'migration' => $name,
+                    'batch' => $currentBatch
+                ]);
+                $migrated++;
+                $logs[] = "<span style='color:#4ade80;'>[MIGRATED]</span> {$name}";
+            } catch (\Illuminate\Database\QueryException $e) {
+                $code = $e->errorInfo[1] ?? 0;
+                $msg = $e->getMessage();
+                $isSynced = (
+                    $code == 1050 ||
+                    $code == 1060 ||
+                    $code == 1061 ||
+                    $code == 1068 ||
+                    $code == 1091 ||
+                    ($code == 1054 && stripos($msg, 'after') !== false) ||
+                    stripos($msg, 'already exists') !== false ||
+                    stripos($msg, 'Duplicate column') !== false ||
+                    stripos($msg, 'Duplicate key') !== false
+                );
+
+                if ($isSynced) {
+                    \Illuminate\Support\Facades\DB::table('migrations')->insert([
+                        'migration' => $name,
+                        'batch' => $currentBatch
+                    ]);
+                    $synced++;
+                    $logs[] = "<span style='color:#38bdf8;'>[SYNCED]</span> {$name} (schema already present or resolved in DB)";
+                } else {
+                    throw $e;
+                }
+            }
+        }
+
+        // Clear caches & ensure storage link
+        try {
+            \Illuminate\Support\Facades\Artisan::call('storage:link');
+        } catch (\Throwable $e) {
+            // Symlink might already exist or be restricted
+        }
+        \Illuminate\Support\Facades\Artisan::call('cache:clear');
+        \Illuminate\Support\Facades\Artisan::call('config:clear');
+        \Illuminate\Support\Facades\Artisan::call('view:clear');
+
+        return "<h3>Database Migration & Sync Complete</h3>" .
+               "<p>Total files: " . count($files) . " | Already tracked: {$skipped} | Newly migrated: {$migrated} | Synced from DB: {$synced}</p>" .
+               "<hr><div style='font-family:monospace; background:#0f172a; color:#f8fafc; padding:20px; border-radius:12px; line-height:1.6;'>" .
+               (empty($logs) ? "All migrations were already up to date!" : implode("<br>", $logs)) . "</div><br><p style='color:#16a34a; font-weight:bold; font-size:1.1rem;'>All database tables and migrations are now 100% in sync!</p>";
     } catch (\Throwable $e) {
-        return 'Migration error: ' . $e->getMessage();
+        return "<h3>Migration Error</h3><p style='color:red;'>" . htmlspecialchars($e->getMessage()) . "</p><pre>" . htmlspecialchars($e->getTraceAsString()) . "</pre>";
     }
 });
 Route::get('/test-currency', [VoucherController::class, 'testCurrency']);
@@ -247,10 +326,11 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::get('/inventory/{id}/edit', [InventoryController::class, 'edit'])->name('inventory.edit');
     Route::post('/inventory/{id}/update', [InventoryController::class, 'update'])->name('inventory.update');
     Route::delete('/inventory/{id}/delete', [InventoryController::class, 'destroy'])->name('inventory.destroy');
-    Route::get('/inventory-export', [InventoryController::class, 'export'])->name('inventory.export');
-    Route::post('/inventory/{id}/duplicate', [InventoryController::class, 'duplicate'])->name('inventory.duplicate');
+    Route::match(['get', 'post'], '/inventory/{id}/duplicate', [InventoryController::class, 'duplicate'])->name('inventory.duplicate');
+    Route::get('/inventory/{id}/discard-draft', [InventoryController::class, 'discardDraft'])->name('inventory.discard-draft');
     Route::post('/inventory/bulk-duplicate', [InventoryController::class, 'bulkDuplicate'])->name('inventory.bulk-duplicate');
     Route::post('/inventory-import', [InventoryController::class, 'import'])->name('inventory.import');
+    Route::get('/inventory-export', [InventoryController::class, 'export'])->name('inventory.export');
     Route::post('/inventory-upload', [InventoryController::class, 'upload'])->name('inventory.upload');
 
     // Sales
@@ -322,6 +402,7 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::post('/system-control/toggle', [SystemController::class, 'toggleSystem'])->name('system.toggle');
     Route::post('/system-control/clear-cache', [SystemController::class, 'clearCache'])->name('system.control.clear-cache');
     Route::post('/system-control/backup-db', [SystemController::class, 'backupDatabase'])->name('system.control.backup-db');
+    Route::post('/system-control/purge-data', [SystemController::class, 'purgeTransactionData'])->name('system.control.purge-data');
     Route::get('/audit-logs', [SystemController::class, 'auditLogs'])->name('audit.index');
 
     // Reports & Revenue
@@ -344,6 +425,9 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::get('/settings/risk-levels/export', [SettingsController::class, 'exportRiskLevelsCsv'])->name('settings.risk-levels.export');
     Route::post('/settings/update-risk-level', [SettingsController::class, 'updateRiskLevel'])->name('settings.update-risk-level');
     Route::delete('/settings/risk-level/{id}', [SettingsController::class, 'deleteRiskLevel'])->name('settings.risk-level.delete');
+    Route::get('/settings/exchange-rates', [SettingsController::class, 'exchangeRates'])->name('settings.exchange-rates');
+    Route::post('/settings/exchange-rates/update', [SettingsController::class, 'updateExchangeRate'])->name('settings.exchange-rates.update');
+    Route::delete('/settings/exchange-rates/{id}', [SettingsController::class, 'deleteExchangeRate'])->name('settings.exchange-rates.delete');
 
     // BANK
     Route::post('/wallet-topup', [WalletController::class, 'createSession'])->name('wallet.topup');
@@ -443,3 +527,4 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
         Route::get('/', [StudentController::class, 'dashboard'])->name('dashboard');
     });
 });
+

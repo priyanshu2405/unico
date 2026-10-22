@@ -66,7 +66,11 @@ class InventoryVoucher extends Model
         'delivered_vouchers',
         'opening_stock_qty',
         'purchased_qty',
-        'status'
+        'status',
+        'purchase_value_usd',
+        'purchase_value_per_unit_usd',
+        'taxes_usd',
+        'rate_approved_by',
     ];
 
     protected $casts = [
@@ -98,6 +102,8 @@ class InventoryVoucher extends Model
     {
         if (!$value) return null;
         if (filter_var($value, FILTER_VALIDATE_URL)) return $value;
+        if (str_starts_with($value, '/storage/')) return $value;
+        if (str_starts_with($value, 'storage/')) return '/' . $value;
         return \Illuminate\Support\Facades\Storage::url($value);
     }
 

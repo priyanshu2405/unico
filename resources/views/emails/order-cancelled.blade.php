@@ -29,7 +29,7 @@
             <div class="order-details">
                 <p><strong>Order ID:</strong> {{ $order->order_id }}</p>
                 <p><strong>Voucher:</strong> {{ $order->voucher_type }}</p>
-                <p><strong>Amount:</strong> RS {{ number_format($order->amount) }}</p>
+                <p><strong>Amount:</strong> {{ $order->currency ?: ($order->inventoryVoucher->currency ?? 'USD') }} {{ number_format($order->amount, 2) }}</p>
             </div>
 
             <p><strong>Refund Information:</strong> If you have already made the payment, your refund will be processed and credited back to your account within 7 working days.</p>

@@ -7,7 +7,12 @@
 
 @php
     $successMsg = session('success') ?: request()->get('success');
+    $userCurr = auth()->user()->currency ?? 'USD';
+    $walletBalLocal = \App\Services\CurrencyService::convert((float)(auth()->user()->wallet_balance ?? 0), 'USD', $userCurr);
+    $bankBalLocal = \App\Services\CurrencyService::convert((float)($totalBalance ?? 0), 'USD', $userCurr);
+    $netWorthLocal = $walletBalLocal + $bankBalLocal;
 @endphp
+
 
 @if($successMsg)
 <script>
@@ -47,7 +52,12 @@
                 <div class="card-body">
                     <div class="text-muted small mb-1 text-uppercase fw-bold">Wallet Balance</div>
                     <div class="d-flex align-items-center">
-                        <h3 class="fw-bold mb-0">${{ auth()->user()->currency }} {{ number_format(auth()->user()->wallet_balance, 2) }}</h3>
+                        <div>
+                            <h3 class="fw-bold mb-0">{{ $userCurr }} {{ number_format($walletBalLocal, 2) }}</h3>
+                            @if($userCurr !== 'USD')
+                                <div class="text-muted extra-small">($ {{ number_format(auth()->user()->wallet_balance, 2) }} USD)</div>
+                            @endif
+                        </div>
                         <span class="ms-auto text-primary fw-bold small"><i class="fas fa-wallet me-1"></i>Available</span>
                     </div>
                 </div>
@@ -58,7 +68,12 @@
                 <div class="card-body">
                     <div class="text-muted small mb-1 text-uppercase fw-bold">Total Bank Balance</div>
                     <div class="d-flex align-items-center">
-                        <h3 class="fw-bold mb-0">{{ auth()->user()->currency }} {{ number_format($totalBalance, 2) }}</h3>
+                        <div>
+                            <h3 class="fw-bold mb-0">{{ $userCurr }} {{ number_format($bankBalLocal, 2) }}</h3>
+                            @if($userCurr !== 'USD')
+                                <div class="text-muted extra-small">($ {{ number_format($totalBalance, 2) }} USD)</div>
+                            @endif
+                        </div>
                         <span class="ms-auto text-info fw-bold small"><i class="fas fa-university me-1"></i>{{ $banks->count() }} Accounts</span>
                     </div>
                 </div>
@@ -69,13 +84,19 @@
                 <div class="card-body">
                     <div class="text-muted small mb-1 text-uppercase fw-bold">Total Net Worth</div>
                     <div class="d-flex align-items-center">
-                        <h3 class="fw-bold mb-0">{{ auth()->user()->currency }} {{ number_format(auth()->user()->wallet_balance + $totalBalance, 2) }}</h3>
+                        <div>
+                            <h3 class="fw-bold mb-0">{{ $userCurr }} {{ number_format($netWorthLocal, 2) }}</h3>
+                            @if($userCurr !== 'USD')
+                                <div class="text-muted extra-small">($ {{ number_format(auth()->user()->wallet_balance + $totalBalance, 2) }} USD)</div>
+                            @endif
+                        </div>
                         <span class="ms-auto text-success fw-bold small"><i class="fas fa-chart-pie me-1"></i>Combined</span>
                     </div>
                 </div>
             </div>
         </div>
     </div>
+
 
     <div class="row g-4">
         <!-- Banks Grid -->
@@ -148,13 +169,13 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @forelse($transactions as $trx)
+                            @forelse($transactions ?? [] as $trx)
                             <tr>
                                 <td class="ps-4">
                                     <div class="d-flex align-items-center gap-2">
                                         <div class="p-2 rounded bg-light">
                                             @if($trx->type == 'credit')
-                                            <i class="fas fa-arrow-alt-circle-down text-success"></i>
+                                             <i class="fas fa-arrow-alt-circle-down text-success"></i>
                                             @else
                                             <i class="fas fa-arrow-alt-circle-up text-danger"></i>
                                             @endif
@@ -179,13 +200,20 @@
                                     {{ $trx->created_at->format('d M Y') }}
                                     <div class="small opacity-75">{{ $trx->created_at->format('h:i A') }}</div>
                                 </td>
+                                @php
+                                    $trxLocal = \App\Services\CurrencyService::convert((float)$trx->amount, 'USD', $userCurr);
+                                @endphp
                                 <td class="text-end pe-4 fw-bold {{ $trx->type == 'credit' ? 'text-success' : 'text-danger' }}">
-                                    {{ $trx->type == 'credit' ? '+' : '-' }}{{ auth()->user()->currency }} {{ number_format($trx->amount, 2) }}
+                                    <div>{{ $trx->type == 'credit' ? '+' : '-' }}{{ $userCurr }} {{ number_format($trxLocal, 2) }}</div>
+                                    @if($userCurr !== 'USD')
+                                        <div class="text-muted extra-small font-monospace" style="font-size: 0.7rem; font-weight: normal;">($ {{ number_format($trx->amount, 2) }} USD)</div>
+                                    @endif
                                 </td>
+
                             </tr>
                             @empty
                             <tr>
-                                <td colspan="4" class="text-center py-5 text-muted">
+                                <td colspan="5" class="text-center py-5 text-muted">
                                     No wallet transactions found.
                                 </td>
                             </tr>
@@ -193,13 +221,14 @@
                         </tbody>
                     </table>
                 </div>
-                @if($transactions->hasPages())
+                @if(isset($transactions) && method_exists($transactions, 'hasPages') && $transactions->hasPages())
                 <div class="card-footer bg-white py-3">
                     <div class="d-flex justify-content-center">
                         @include('dashboard.partials.custom-pagination', ['items' => $transactions])
                     </div>
                 </div>
                 @endif
+
             </div>
         </div>
     </div>
@@ -276,18 +305,24 @@
 
                         <div class="input-group border rounded p-2 bg-light">
                             <span class="input-group-text bg-transparent border-0 fw-bold text-primary">
-                                {{ auth()->user()->currency }}
+                                {{ $userCurr }}
                             </span>
 
-                            <input type="number" name="amount"
+                            <input type="number" step="any" name="amount" id="topupAmountInput"
                                 class="form-control bg-transparent border-0 shadow-none fw-bold"
                                 placeholder="0.00" min="1" required>
                         </div>
+                        @if($userCurr !== 'USD')
+                            <div class="text-muted small mt-2 d-flex justify-content-between">
+                                <span>Base Equivalent:</span>
+                                <strong>$ <span id="topupUsdEquivalentVal">0.00</span> USD</strong>
+                            </div>
+                        @endif
                     </div>
 
                     <div class="alert bg-primary-subtle border-0 small text-primary p-3 mb-0">
                         <i class="fas fa-info-circle me-2"></i>
-                        Funds will be credited to your wallet instantly.
+                        Funds will be converted at current admin rates and credited to your wallet in base USD instantly.
                     </div>
                 </div>
 
@@ -302,6 +337,16 @@
             <!-- ✅ FORM END -->
 
             <script>
+                const userExchangeRateToUsd = {{ (float) \App\Services\CurrencyService::getRate($userCurr) }};
+                const topupInput = document.getElementById('topupAmountInput');
+                const topupUsdVal = document.getElementById('topupUsdEquivalentVal');
+                if (topupInput && topupUsdVal) {
+                    topupInput.addEventListener('input', function() {
+                        const val = parseFloat(this.value) || 0;
+                        topupUsdVal.textContent = (val * userExchangeRateToUsd).toFixed(2);
+                    });
+                }
+
                 document.querySelectorAll('input[name="payment_method"]').forEach(radio => {
                     radio.addEventListener('change', function() {
                         const form = document.getElementById('paymentForm');
@@ -325,6 +370,7 @@
                     });
                 });
             </script>
+
 
         </div>
     </div>

@@ -35,6 +35,10 @@ class WalletService
                 'description' => $description,
                 'ip_address' => request()->ip(),
                 'user_agent' => request()->userAgent(),
+                'currency' => 'USD',
+                'original_amount' => $amount,
+                'exchange_rate_applied' => 1.0,
+                'amount_usd' => $amount,
             ]);
         });
     }
@@ -68,6 +72,10 @@ class WalletService
                 'description' => $description,
                 'ip_address' => request()->ip(),
                 'user_agent' => request()->userAgent(),
+                'currency' => 'USD',
+                'original_amount' => $amount,
+                'exchange_rate_applied' => 1.0,
+                'amount_usd' => $amount,
             ]);
         });
     }

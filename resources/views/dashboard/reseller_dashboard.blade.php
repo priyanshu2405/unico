@@ -12,45 +12,67 @@
 
    <div class="row g-3 mb-4">
       <div class="col-md-3">
-         <div class="card shadow-sm border-0 border-start border-primary border-4">
-            <div class="card-body">
-               <div class="text-muted small mb-1">Total Voucher Purchased</div>
-               <div class="d-flex align-items-center">
-                  <h3 class="fw-bold mb-0">{{ number_format($totalVouchersPurchased, 0) }}</h3>
-                  <span class="ms-auto text-success small fw-bold"><i class="fas fa-ticket-alt me-1"></i>Units</span>
+         <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
+            <div class="card-body d-flex flex-column justify-content-between">
+               <div>
+                  <div class="text-muted small mb-1 text-uppercase fw-semibold">Total Vouchers Purchased</div>
+                  <div class="d-flex align-items-center">
+                     <h3 class="fw-bold mb-0 text-primary">{{ number_format($totalVouchersPurchased, 0) }}</h3>
+                     <span class="ms-auto text-primary small fw-bold"><i class="fas fa-ticket-alt me-1"></i>Units</span>
+                  </div>
+               </div>
+               <div class="pt-2 mt-2 border-top small text-muted d-flex justify-content-between">
+                  <span>Direct: <strong>{{ number_format($directVouchersPurchased ?? 0, 0) }}</strong></span>
+                  <span>Sub-Agents: <strong>{{ number_format($subAgentVouchersPurchased ?? 0, 0) }}</strong></span>
                </div>
             </div>
          </div>
       </div>
       <div class="col-md-3">
          <div class="card shadow-sm border-0 border-start border-warning border-4 h-100">
-            <div class="card-body">
-               <div class="text-muted small mb-1">Total Purchase Amount</div>
-               <div class="d-flex align-items-center">
-                  <h3 class="fw-bold mb-0">RS {{ number_format($totalPurchaseAmount, 2) }}</h3>
-                  <span class="ms-auto text-warning small fw-bold"><i class="fas fa-money-bill-wave me-1"></i>Total Spent</span>
+            <div class="card-body d-flex flex-column justify-content-between">
+               <div>
+                  <div class="text-muted small mb-1 text-uppercase fw-semibold">Total Network Sales Volume</div>
+                  <div class="d-flex align-items-center">
+                     <h3 class="fw-bold mb-0 text-dark">{{ $userCurrency ?? 'USD' }} {{ number_format($totalPurchaseAmount, 2) }}</h3>
+                     <span class="ms-auto text-warning small fw-bold"><i class="fas fa-money-bill-wave me-1"></i>Combined</span>
+                  </div>
+               </div>
+               <div class="pt-2 mt-2 border-top small text-muted d-flex justify-content-between">
+                  <span>Own: <strong>{{ $userCurrency ?? 'USD' }} {{ number_format($directPurchaseAmount ?? 0, 2) }}</strong></span>
+                  <span>Sub-Agents: <strong>{{ $userCurrency ?? 'USD' }} {{ number_format($subAgentPurchaseAmount ?? 0, 2) }}</strong></span>
                </div>
             </div>
          </div>
       </div>
       <div class="col-md-3">
          <div class="card shadow-sm border-0 border-start border-info border-4 h-100">
-            <div class="card-body">
-               <div class="text-muted small mb-1">Total Referral Points</div>
-               <div class="d-flex align-items-center">
-                  <h3 class="fw-bold mb-0">{{ number_format($totalReferralPoints, 0) }}</h3>
-                  <span class="ms-auto text-info small fw-bold"><i class="fas fa-users me-1"></i>Points</span>
+            <div class="card-body d-flex flex-column justify-content-between">
+               <div>
+                  <div class="text-muted small mb-1 text-uppercase fw-semibold">Total Referral Points</div>
+                  <div class="d-flex align-items-center">
+                     <h3 class="fw-bold mb-0 text-info">{{ number_format($totalReferralPoints, 0) }}</h3>
+                     <span class="ms-auto text-info small fw-bold"><i class="fas fa-users me-1"></i>Points</span>
+                  </div>
+               </div>
+               <div class="pt-2 mt-2 border-top small text-muted">
+                  <span>From network purchases</span>
                </div>
             </div>
          </div>
       </div>
       <div class="col-md-3">
          <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
-            <div class="card-body">
-               <div class="text-muted small mb-1">Total Bonus Points</div>
-               <div class="d-flex align-items-center">
-                  <h3 class="fw-bold mb-0">{{ number_format($totalBonusPoints, 0) }}</h3>
-                  <span class="ms-auto text-success small fw-bold"><i class="fas fa-gift me-1"></i>Bonus</span>
+            <div class="card-body d-flex flex-column justify-content-between">
+               <div>
+                  <div class="text-muted small mb-1 text-uppercase fw-semibold">Total Bonus Points</div>
+                  <div class="d-flex align-items-center">
+                     <h3 class="fw-bold mb-0 text-success">{{ number_format($totalBonusPoints, 0) }}</h3>
+                     <span class="ms-auto text-success small fw-bold"><i class="fas fa-gift me-1"></i>Bonus</span>
+                  </div>
+               </div>
+               <div class="pt-2 mt-2 border-top small text-muted">
+                  <span>Earned bonus balance</span>
                </div>
             </div>
          </div>
@@ -126,6 +148,107 @@
                         </div>
                      </div>
                   </div>
+               </div>
+            </div>
+         </div>
+   <!-- Connected Sub-Agents & Students Network Section -->
+   <div class="row mt-4 mb-4">
+      <div class="col-12">
+         <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+               <div>
+                  <h5 class="mb-0 fw-bold"><i class="fas fa-network-wired text-primary me-2"></i>Connected Sub-Agents & Students</h5>
+                  <small class="text-muted">Overview of all agents and students registered under your Reseller account</small>
+               </div>
+               <div class="d-flex gap-2 align-items-center">
+                  <span class="badge bg-primary-subtle text-primary px-3 py-2 fw-semibold">
+                     <i class="fas fa-user-tie me-1"></i> {{ $connectedAgentsCount ?? 0 }} Agents
+                  </span>
+                  <span class="badge bg-info-subtle text-info px-3 py-2 fw-semibold">
+                     <i class="fas fa-user-graduate me-1"></i> {{ $connectedStudentsCount ?? 0 }} Students
+                  </span>
+                  <span class="badge bg-success-subtle text-success px-3 py-2 fw-semibold">
+                     <i class="fas fa-users me-1"></i> Total: {{ count($connectedUsers ?? []) }}
+                  </span>
+               </div>
+            </div>
+            <div class="card-body p-0">
+               <div class="table-responsive">
+                  <table class="table table-hover align-middle mb-0" style="white-space: nowrap;">
+                     <thead class="table-light">
+                        <tr>
+                           <th>#</th>
+                           <th>User</th>
+                           <th>Account Type</th>
+                           <th>Country / Location</th>
+                           <th>Contact</th>
+                           <th class="text-center">Orders Delivered</th>
+                           <th class="text-center">Vouchers Bought</th>
+                           <th class="text-end">Total Purchases</th>
+                           <th>Status</th>
+                           <th>Joined Date</th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        @forelse($connectedUsers ?? [] as $index => $u)
+                        <tr>
+                           <td>{{ $loop->iteration }}</td>
+                           <td>
+                              <div class="d-flex align-items-center">
+                                 <div class="avatar-sm rounded-circle bg-light d-flex align-items-center justify-content-center me-2" style="width: 35px; height: 35px;">
+                                    <i class="fas fa-user text-secondary"></i>
+                                 </div>
+                                 <div>
+                                    <div class="fw-bold text-dark">{{ $u->name ?: ($u->first_name . ' ' . $u->last_name) }}</div>
+                                    <small class="text-muted">{{ $u->user_id }}</small>
+                                 </div>
+                              </div>
+                           </td>
+                           <td>
+                              @if($u->account_type === 'agent')
+                                 <span class="badge bg-primary-subtle text-primary px-2 py-1"><i class="fas fa-user-tie me-1"></i>Agent</span>
+                              @elseif($u->account_type === 'student')
+                                 <span class="badge bg-info-subtle text-info px-2 py-1"><i class="fas fa-user-graduate me-1"></i>Student</span>
+                              @else
+                                 <span class="badge bg-secondary-subtle text-secondary px-2 py-1">{{ ucfirst($u->account_type) }}</span>
+                              @endif
+                           </td>
+                           <td>
+                              <div>{{ $u->country ?? 'N/A' }}</div>
+                              @if($u->city)<small class="text-muted">{{ $u->city }}</small>@endif
+                           </td>
+                           <td>
+                              <div>{{ $u->email }}</div>
+                              @if($u->phone)<small class="text-muted">{{ $u->phone }}</small>@endif
+                           </td>
+                           <td class="text-center fw-bold">{{ number_format($u->delivered_orders_count ?? 0) }}</td>
+                           <td class="text-center fw-bold text-primary">{{ number_format($u->delivered_vouchers_qty ?? 0) }}</td>
+                           <td class="text-end fw-bold text-success">{{ $userCurrency ?? 'USD' }} {{ number_format($u->delivered_orders_sum ?? 0, 2) }}</td>
+                           <td>
+                              @if($u->is_active)
+                                 <span class="badge bg-success-subtle text-success"><i class="fas fa-check-circle me-1"></i>Active</span>
+                              @else
+                                 <span class="badge bg-danger-subtle text-danger"><i class="fas fa-ban me-1"></i>Inactive</span>
+                              @endif
+                           </td>
+                           <td>{{ $u->created_at ? $u->created_at->format('d M Y') : 'N/A' }}</td>
+                        </tr>
+                        @empty
+                        <tr>
+                           <td colspan="10" class="text-center py-5">
+                              <div class="text-muted">
+                                 <i class="fas fa-users-slash fa-3x mb-3 text-secondary opacity-50"></i>
+                                 <h6 class="fw-bold">No Sub-Agents or Students Connected Yet</h6>
+                                 <p class="small mb-3">When you register sub-agents or students, they will appear here along with their sales and orders.</p>
+                                 <a href="{{ route('users.create') }}" class="btn btn-sm btn-primary px-3 shadow-sm rounded-pill">
+                                    <i class="fas fa-user-plus me-1"></i> Register New Agent / Student
+                                 </a>
+                              </div>
+                           </td>
+                        </tr>
+                        @endforelse
+                     </tbody>
+                  </table>
                </div>
             </div>
          </div>
@@ -209,7 +332,7 @@
                                     label += ': ';
                                 }
                                 if (context.dataset.yAxisID === 'y') {
-                                    label += 'RS ' + new Intl.NumberFormat().format(context.parsed.y);
+                                    label += '{{ $userCurrency ?? 'USD' }} ' + new Intl.NumberFormat().format(context.parsed.y);
                                 } else {
                                     label += new Intl.NumberFormat().format(context.parsed.y);
                                 }
@@ -226,7 +349,7 @@
                         beginAtZero: true,
                         title: {
                             display: true,
-                            text: 'Revenue (RS)'
+                            text: 'Purchases ({{ $userCurrency ?? 'USD' }})'
                         }
                     },
                     y1: {

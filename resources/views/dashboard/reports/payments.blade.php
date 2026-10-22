@@ -39,16 +39,46 @@
                             <th>Voucher Type</th>
                             <th>Sale Invoice No.</th>
                             <th>Quantity</th>
-                            <th>Sales Value</th>
+                            <th>Sales Value (Local)</th>
                             <th>Payment Receive Bank</th>
-                            <th>Currency Conversion</th>
-                            <th>FX Gain/Loss</th>
+                            <th>Admin Rate (@ USD)</th>
+                            <th>Quoted Value (USD)</th>
+                            <th>Settled Value (USD)</th>
+                            <th>Total Cost (USD)</th>
+                            <th>Gross Profit (USD)</th>
+                            <th>Gateway FX Variance (USD)</th>
+                            <th>Net Realized Profit (USD)</th>
                             <th>Referral Points</th>
                             <th>Bonus Points</th>
                         </tr>
                     </thead>
                     <tbody>
                         @forelse($payments as $index => $payment)
+                        @php
+                        $currencyCode = $payment->currency ?: (optional($payment->inventoryVoucher)->currency ?? 'USD');
+                        $saleValueLocal = (float) $payment->amount;
+                        $quantity = max(1, (int)$payment->quantity);
+
+                        $adminRate = (float)($payment->exchange_rate_applied ?: \App\Services\CurrencyService::getRate($currencyCode));
+                        $quotedSalesUsd = $saleValueLocal * $adminRate;
+
+                        if ($payment->amount_in_base_currency !== null && (float)$payment->amount_in_base_currency > 0) {
+                            $settledSalesUsd = (float)$payment->amount_in_base_currency;
+                        } else {
+                            $settledSalesUsd = $quotedSalesUsd;
+                        }
+
+                        $unitCostUsd = 0.0;
+                        $totalPurchaseCostUsd = 0.0;
+                        if ($payment->inventoryVoucher) {
+                            $unitCostUsd = (float) \App\Services\ProfitLossService::getInventoryUnitCostBase($payment->inventoryVoucher);
+                            $totalPurchaseCostUsd = $unitCostUsd * $quantity;
+                        }
+
+                        $grossProfitUsd = $quotedSalesUsd - $totalPurchaseCostUsd;
+                        $gatewayFxVarianceUsd = $settledSalesUsd - $quotedSalesUsd;
+                        $netRealizedProfitUsd = $grossProfitUsd + $gatewayFxVarianceUsd;
+                        @endphp
                         <tr>
                             <td class="px-4 fw-bold text-muted">{{ $index + 1 }}</td>
                             <td class="fw-bold">{{ $payment->order_id }}</td>
@@ -57,7 +87,7 @@
                             <td>{{ $payment->created_at->format('H:i:s') }}</td>
                             <td class="fw-bold">{{ $payment->user->name ?? 'N/A' }}</td>
                             <td class="text-capitalize">{{ str_replace('_', ' ', $payment->user_role) }}</td>
-                            <td>{{ optional($payment->inventoryVoucher)->local_currency ?? 'PKR' }}</td>
+                            <td>{{ $currencyCode }}</td>
                             <td>{{ $payment->user->country ?? 'N/A' }}</td>
                             <td>{{ $payment->user->state ?? 'N/A' }}</td>
                             <td>{{ optional($payment->inventoryVoucher)->brand_name ?? 'N/A' }}</td>
@@ -65,23 +95,27 @@
                             <td>{{ $payment->voucher_type }}</td>
                             <td>{{ $payment->order_id }}</td>
                             <td class="fw-bold">{{ $payment->quantity }}</td>
-                            <td class="fw-bold">{{ number_format($payment->amount, 2) }}</td>
+                            <td class="fw-bold">{{ $currencyCode }} {{ number_format($saleValueLocal, 2) }}</td>
                             <td>{{ $payment->bank_name ?? $payment->payment_method }}</td>
-                            <td>{{ number_format(optional($payment->inventoryVoucher)->currency_conversion_rate ?? 1, 4) }}</td>
-                            @php
-                                $purchaseValuePerUnit = optional($payment->inventoryVoucher)->purchase_value_per_unit ?? 0;
-                                $totalPurchaseValue = $purchaseValuePerUnit * $payment->quantity;
-                                $fxGainLoss = $payment->amount - $totalPurchaseValue;
-                            @endphp
-                            <td class="{{ $fxGainLoss >= 0 ? 'text-success' : 'text-danger' }}">
-                                {{ number_format($fxGainLoss, 2) }}
+                            <td>{{ number_format($adminRate, 6) }}</td>
+                            <td class="text-secondary">$ {{ number_format($quotedSalesUsd, 2) }}</td>
+                            <td class="fw-bold text-primary">$ {{ number_format($settledSalesUsd, 2) }}</td>
+                            <td>$ {{ number_format($totalPurchaseCostUsd, 2) }}</td>
+                            <td class="{{ $grossProfitUsd >= 0 ? 'text-success' : 'text-danger' }} fw-bold">
+                                $ {{ number_format($grossProfitUsd, 2) }}
                             </td>
-                            <td>{{ $payment->referral_points }}</td>
-                            <td>{{ $payment->bonus_amount }}</td>
+                            <td class="{{ $gatewayFxVarianceUsd >= 0 ? 'text-info' : 'text-warning' }} fw-bold">
+                                $ {{ number_format($gatewayFxVarianceUsd, 2) }}
+                            </td>
+                            <td class="{{ $netRealizedProfitUsd >= 0 ? 'text-success' : 'text-danger' }} fw-bold">
+                                $ {{ number_format($netRealizedProfitUsd, 2) }}
+                            </td>
+                            <td>{{ $payment->referral_points ?? 0 }}</td>
+                            <td>{{ number_format($payment->bonus_amount ?? 0, 2) }}</td>
                         </tr>
                         @empty
                         <tr>
-                            <td colspan="17" class="text-center py-5 text-muted">No payment records found</td>
+                            <td colspan="23" class="text-center py-5 text-muted">No payment records found</td>
                         </tr>
                         @endforelse
                     </tbody>

@@ -84,7 +84,7 @@
 
                 <div class="d-grid gap-2 pt-3 border-top">
                     <button type="submit" class="btn btn-primary">Apply Filters</button>
-                    <a href="{{ route('users.management') }}" class="btn btn-light">Reset All</a>
+                    <a href="{{ route('users.management') }}" class="btn btn-light" id="reset-filter-btn">Reset All</a>
                 </div>
             </form>
         </div>
@@ -102,7 +102,7 @@
                     <i class="fas fa-sync me-1"></i> Toggle Status
                 </button>
                 @endif
-                <a href="{{ route('users.export.source', request()->all()) }}" class="btn btn-success btn-sm px-3 shadow-sm">
+                <a href="{{ route('users.export.source', request()->all()) }}" id="customer-source-export-link" class="btn btn-success btn-sm px-3 shadow-sm">
                     <i class="fas fa-file-csv me-1"></i> Customer Source
                 </a>
                 <a href="{{ route('users.pdf', request()->all()) }}" id="csv-export-link" class="btn btn-success btn-sm px-3 shadow-sm">
@@ -138,9 +138,19 @@
                     // Update URL without reload
                     window.history.pushState({}, '', url);
 
-                    // Update CSV export link
-                    let csvUrl = "{{ route('users.pdf') }}?" + (url.split('?')[1] || '');
+                    // Update total count badge
+                    let newTotal = $('#ajax-users-count').data('total');
+                    if (newTotal !== undefined) {
+                        $('.total-count').text(newTotal + ' Users Found');
+                    }
+
+                    // Update export links
+                    let queryString = url.indexOf('?') !== -1 ? url.split('?')[1] : '';
+                    let csvUrl = "{{ route('users.pdf') }}" + (queryString ? '?' + queryString : '');
                     $('#csv-export-link').attr('href', csvUrl);
+
+                    let sourceUrl = "{{ route('users.export.source') }}" + (queryString ? '?' + queryString : '');
+                    $('#customer-source-export-link').attr('href', sourceUrl);
                 }
             });
         }
@@ -156,6 +166,20 @@
             e.preventDefault();
             let url = $(this).attr('action') + '?' + $(this).serialize();
             updateTable(url);
+
+            // Close offcanvas
+            var offcanvasElement = document.getElementById('filterOffcanvas');
+            var offcanvas = bootstrap.Offcanvas.getInstance(offcanvasElement);
+            if (offcanvas) offcanvas.hide();
+        });
+
+        // Handle Reset All
+        $(document).on('click', '#reset-filter-btn', function(e) {
+            e.preventDefault();
+            $('#filter-form')[0].reset();
+            $('#filter-form select').val('all');
+            $('#filter-form input[type="text"], #filter-form input[type="date"]').val('');
+            updateTable("{{ route('users.management') }}");
 
             // Close offcanvas
             var offcanvasElement = document.getElementById('filterOffcanvas');

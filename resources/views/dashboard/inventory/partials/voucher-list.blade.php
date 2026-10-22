@@ -179,23 +179,34 @@
         </div>
 
         <div class="v-brand">{{ $v->brand_name }}</div>
+        @php
+            $agentUsd = \App\Services\CurrencyService::convertToBase((float)($v->agent_sale_price ?? 0), $v->currency)['base_amount'] ?? $v->agent_sale_price;
+        @endphp
         <h3 class="v-main-title">
-            {{ $v->currency }} {{ number_format($v->agent_sale_price) }} - {{ $v->voucher_variant ?: 'Special' }}
+            {{ $v->currency }} {{ number_format($v->agent_sale_price ?? 0) }} <span class="fw-normal text-muted" style="font-size: 0.85em;">(${{ number_format((float)($agentUsd ?? 0), 2) }} USD)</span> - {{ $v->voucher_variant ?: 'Special' }}
             @if($v->is_expired)
             <span class="badge bg-danger ms-2" style="font-size: 0.65rem; padding: 0.35rem 0.5rem;">EXPIRED</span>
             @endif
         </h3>
         <p class="v-desc">SKU: {{ $v->sku_id }} | 
             @if(is_array($v->country_region))
-                {{ in_array('all', $v->country_region) ? 'GLB' : (count($v->country_region) > 1 ? 'MULTY' : $v->country_region[0]) }}
+                {{ in_array('all', $v->country_region) ? 'GLB' : (count($v->country_region) > 1 ? 'MULTY' : ($v->country_region[0] ?? 'N/A')) }}
             @else
-                {{ $v->country_region }}
+                {{ $v->country_region ?: 'N/A' }}
             @endif
              | 
             @if(is_array($v->state))
                 {{ in_array('all', $v->state) ? 'All States' : (count($v->state) > 1 ? 'MULTY' : ($v->state[0] ?? 'N/A')) }}
             @else
                 {{ $v->state ?: 'N/A' }}
+            @endif
+            @if(!empty($v->city) && $v->city !== 'null' && $v->city !== ['null'])
+             | 
+                @if(is_array($v->city))
+                    {{ in_array('all', $v->city) ? 'All Cities' : (count($v->city) > 1 ? 'MULTY' : ($v->city[0] ?? '')) }}
+                @else
+                    {{ $v->city }}
+                @endif
             @endif
              | Qty: 
              @php
@@ -208,7 +219,7 @@
         <div class="v-divider">
             <div class="v-meta">
                 <i class="far fa-calendar-alt"></i>
-                CREATED: {{ $v->created_at->format('M Y') }}
+                CREATED: {{ $v->created_at ? $v->created_at->format('M Y') : 'N/A' }}
             </div>
             
             @if(auth()->user()->isAdmin() || (auth()->user()->isManager() && auth()->user()->can_edit_voucher_stock))
@@ -216,12 +227,9 @@
                 <a href="{{ route('inventory.edit', $v->id) }}" class="action-btn" title="Edit">
                     <i class="fas fa-edit fa-xs"></i>
                 </a>
-                <form action="{{ route('inventory.duplicate', $v->id) }}" method="POST" class="d-inline">
-                    @csrf
-                    <button type="submit" class="action-btn" title="Duplicate">
-                        <i class="fas fa-copy fa-xs"></i>
-                    </button>
-                </form>
+                <a href="{{ route('inventory.duplicate', $v->id) }}" class="action-btn" title="Duplicate">
+                    <i class="fas fa-copy fa-xs"></i>
+                </a>
                 <button type="button" class="action-btn btn-del delete-voucher-btn" data-id="{{ $v->id }}" title="Delete">
                     <i class="fas fa-trash-alt fa-xs"></i>
                 </button>

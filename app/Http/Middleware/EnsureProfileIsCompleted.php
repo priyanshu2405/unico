@@ -32,7 +32,7 @@ class EnsureProfileIsCompleted
                 return $next($request);
             }
 
-            if ($user->account_type === 'student' && !$user->exam_purpose) {
+            if ($user->account_type === 'student' && !$user->exam_purpose && $user->profile_verification_status !== 'verified') {
                 return redirect()->route('auth.form.student');
             }
             if (in_array($user->account_type, ['reseller_agent', 'agent']) && !$user->business_name) {

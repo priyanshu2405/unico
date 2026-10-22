@@ -42,28 +42,35 @@ class WebhookController extends Controller
                 $user = User::find($session->metadata->user_id ?? null);
 
                 if ($user) {
-                    $amount = $session->amount_total / 100;
+                    $amountUsd = isset($session->metadata->amount_usd) ? (float)$session->metadata->amount_usd : (float)($session->amount_total / 100);
+                    $localAmount = $session->metadata->local_amount ?? null;
+                    $localCurr = $session->metadata->local_currency ?? ($user->currency ?? 'USD');
+                    $desc = $localAmount 
+                        ? "Wallet Top-up via Stripe Webhook ({$localAmount} {$localCurr})" 
+                        : "Wallet Top-up via Stripe Webhook";
 
                     // Duplicate check
                     $exists = WalletLedger::where('transaction_id', $session->id)->exists();
 
-                    if (!$exists) {
-                        DB::transaction(function () use ($user, $amount, $session) {
-                            $user->wallet_balance += $amount;
+                    if (!$exists && $amountUsd > 0) {
+                        DB::transaction(function () use ($user, $amountUsd, $session, $desc) {
+                            $user->wallet_balance += $amountUsd;
+                            $user->withdrawable_balance += $amountUsd;
                             $user->save();
 
                             WalletLedger::create([
                                 'transaction_id' => $session->id,
                                 'user_id' => $user->id,
                                 'type' => 'credit',
-                                'amount' => $amount,
+                                'amount' => $amountUsd,
                                 'source' => 'stripe',
-                                'description' => 'Wallet Top-up via Stripe Webhook',
+                                'description' => $desc,
                                 'created_at' => now(),
                             ]);
                         });
                     }
                 }
+
             }
         }
 

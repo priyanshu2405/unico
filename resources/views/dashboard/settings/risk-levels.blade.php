@@ -229,6 +229,7 @@ $(document).ready(function() {
         if(countryName) url += `country_name=${countryName}&`;
         if(countryCode) url += `country_code=${countryCode}&`;
         if(riskLevel && riskLevel !== 'all') url += `risk_level=${riskLevel}&`;
+        url += `_t=${Date.now()}`;
         
         window.location.href = url;
     });

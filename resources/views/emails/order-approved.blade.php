@@ -23,7 +23,7 @@
             <div class="order-details">
                 <p><strong>Order ID:</strong> {{ $order->order_id }}</p>
                 <p><strong>Voucher:</strong> {{ $order->voucher_id }}</p>
-                <p><strong>Amount:</strong> RS {{ number_format($order->amount) }}</p>
+                <p><strong>Amount:</strong> {{ $order->currency ?: ($order->inventoryVoucher->currency ?? 'USD') }} {{ number_format($order->amount, 2) }}</p>
                 <p><strong>Date:</strong> {{ $order->created_at->format('d M Y') }}</p>
             </div>
 

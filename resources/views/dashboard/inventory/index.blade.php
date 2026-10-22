@@ -372,6 +372,10 @@
                 success: function(response) {
                     toastr.success(response.success);
                     fetchVouchers(window.location.href);
+                },
+                error: function(xhr) {
+                    let msg = (xhr.responseJSON && xhr.responseJSON.error) ? xhr.responseJSON.error : 'Failed to delete voucher.';
+                    toastr.error(msg);
                 }
             });
         });

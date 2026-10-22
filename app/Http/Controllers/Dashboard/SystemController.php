@@ -183,4 +183,94 @@ class SystemController extends Controller
             return back()->with('error', 'Failed to backup database: ' . $e->getMessage());
         }
     }
+
+    public function purgeTransactionData(Request $request)
+    {
+        // Only admin can purge
+        if (auth()->user()->account_type !== 'admin') {
+            return back()->with('error', 'Unauthorized: Only admin can perform this action.');
+        }
+
+        // Validate password confirmation
+        $request->validate([
+            'admin_password' => 'required|string',
+        ]);
+
+        if (!\Illuminate\Support\Facades\Hash::check($request->admin_password, auth()->user()->password)) {
+            return back()->with('error', 'Invalid password. Purge cancelled.');
+        }
+
+        try {
+            DB::statement('SET FOREIGN_KEY_CHECKS = 0');
+
+            $tablesToPurge = [
+                'orders',
+                'inventory_vouchers',
+                'wallet_ledger',
+                'refund_requests',
+                'refund_chat_messages',
+                'exchange_rates',
+                'voucher_price_rules',
+                'admin_payment_methods',
+                'agent_details',
+                'student_details',
+                'bank_accounts',
+                'support_queries',
+                'support_options',
+                'support_assignments',
+                'disputes',
+                'dispute_messages',
+                'notifications',
+                'country_risk_levels',
+                'contact_us',
+                'job_applications',
+                'job_vacancies',
+                'sessions',
+                'password_reset_tokens',
+                'cache',
+                'cache_locks',
+                'jobs',
+                'job_batches',
+                'failed_jobs',
+            ];
+
+            $purgedTables = [];
+            $skippedTables = [];
+
+            foreach ($tablesToPurge as $table) {
+                try {
+                    DB::table($table)->truncate();
+                    $purgedTables[] = $table;
+                } catch (\Exception $e) {
+                    $skippedTables[] = $table . ' (' . $e->getMessage() . ')';
+                }
+            }
+
+            // Reset wallet balances on users table (keep user accounts intact)
+            DB::table('users')->update([
+                'wallet_balance' => 0,
+                'withdrawable_balance' => 0,
+            ]);
+
+            DB::statement('SET FOREIGN_KEY_CHECKS = 1');
+
+            // Log the purge action (audit_logs was truncated, so create a fresh entry)
+            AuditLog::create([
+                'user_id' => auth()->id(),
+                'action' => 'System Purge',
+                'description' => 'All transaction data purged. Tables cleared: ' . count($purgedTables) . '. Skipped: ' . count($skippedTables),
+                'ip_address' => $request->ip()
+            ]);
+
+            $message = 'Transaction data purged successfully. ' . count($purgedTables) . ' tables cleared.';
+            if (!empty($skippedTables)) {
+                $message .= ' Skipped: ' . implode(', ', $skippedTables);
+            }
+
+            return back()->with('success', $message);
+        } catch (\Exception $e) {
+            DB::statement('SET FOREIGN_KEY_CHECKS = 1');
+            return back()->with('error', 'Purge failed: ' . $e->getMessage());
+        }
+    }
 }

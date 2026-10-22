@@ -61,12 +61,12 @@
     <div class="card shadow-sm border-0">
         <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
             <div>
-    <h5 class="mb-0 fw-bold">Purchase Stock</h5>
-    <small class="text-muted">Add and manage stock details for purchased items.</small>
+    <h5 class="mb-0 fw-bold">Pricing Rules</h5>
+    <small class="text-muted">Set and manage per-country sale prices and daily limits for vouchers.</small>
 </div>
             <div class="d-flex gap-2">
                 <a href="{{ route('pricing.create') }}" class="btn btn-primary btn-sm px-3 shadow-sm">
-                    <i class="fas fa-plus me-1"></i> Add Stock
+                    <i class="fas fa-plus me-1"></i> Add Pricing Rule
                 </a>
                 <a href="{{ route('pricing.export', request()->all()) }}" class="btn btn-success btn-sm px-3 shadow-sm">
                     <i class="fas fa-file-csv me-1"></i> CSV
@@ -122,9 +122,26 @@
                             <td>{{ $rule->purchase_invoice_no ?? $rule->inventoryVoucher->purchase_invoice_no ?? 'N/A' }}</td>
                             <td>{{ $rule->purchase_date ? \Carbon\Carbon::parse($rule->purchase_date)->format('d M Y') : 'N/A' }}</td>
                             <td>{{ $rule->total_quantity ?? $rule->inventoryVoucher->quantity ?? 0 }}</td>
-                            <td>${{ number_format($rule->purchase_value ?? $rule->inventoryVoucher->purchase_value ?? 0, 2) }}</td>
+                            @php
+                                $rCurr = $rule->currency ?? $rule->inventoryVoucher->currency ?? 'USD';
+                                $pv = (float)($rule->purchase_value ?? $rule->inventoryVoucher->purchase_value ?? 0);
+                                $pvUsd = \App\Services\CurrencyService::convertToBase($pv, $rCurr)['base_amount'] ?? $pv;
+                                $pup = (float)($rule->per_unit_price ?? $rule->inventoryVoucher->purchase_value_per_unit ?? 0);
+                                $pupUsd = \App\Services\CurrencyService::convertToBase($pup, $rCurr)['base_amount'] ?? $pup;
+                            @endphp
+                            <td>
+                                {{ $rCurr }} {{ number_format($pv, 2) }}
+                                @if(strtoupper($rCurr) !== 'USD')
+                                    <span class="small text-muted font-monospace d-block">(${{ number_format($pvUsd, 2) }} USD)</span>
+                                @endif
+                            </td>
                             <td>${{ number_format($rule->taxes ?? $rule->inventoryVoucher->taxes ?? 0, 2) }}</td>
-                            <td>${{ number_format($rule->per_unit_price ?? $rule->inventoryVoucher->purchase_value_per_unit ?? 0, 2) }}</td>
+                            <td>
+                                {{ $rCurr }} {{ number_format($pup, 2) }}
+                                @if(strtoupper($rCurr) !== 'USD')
+                                    <span class="small text-muted font-monospace d-block">(${{ number_format($pupUsd, 2) }} USD)</span>
+                                @endif
+                            </td>
                             <td>{{ $rule->issue_date ? \Carbon\Carbon::parse($rule->issue_date)->format('d M Y') : 'N/A' }}</td>
                             <td>
                                 @if($rule->expiry_date)
@@ -157,7 +174,7 @@
                         @empty
                         <tr>
                             <td colspan="20" class="text-center py-5 text-muted">
-                                No pricing rules found.
+                                No pricing rules found. Use <strong>Add Pricing Rule</strong> to configure country-specific prices.
                             </td>
                         </tr>
                         @endforelse

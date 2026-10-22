@@ -68,9 +68,11 @@
                     <h5 class="mb-0 fw-bold">Vouchers Table</h5>
                 </div>
                 <div class="d-flex gap-2">
+                    @if(in_array(auth()->user()->account_type, ['admin', 'manager']))
                     <a href="{{ route('vouchers.export', request()->all()) }}" id="csv-export-link" class="btn btn-success btn-sm px-3 shadow-sm">
                         <i class="fas fa-file-csv me-1"></i> CSV
                     </a>
+                    @endif
                     <button class="btn btn-outline-primary btn-sm px-3 shadow-sm" type="button" data-bs-toggle="offcanvas" data-bs-target="#filterOffcanvas">
                         <i class="fas fa-filter me-1"></i> Filter
                     </button>
