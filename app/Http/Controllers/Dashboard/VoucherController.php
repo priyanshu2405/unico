@@ -378,6 +378,11 @@ class VoucherController extends Controller
         $conversion = CurrencyService::convertToBase((float)$totalAmount, $voucherCurrency);
         $exchangeRateApplied = $conversion['rate'];
 
+        $payment_receipt = null;
+        if ($request->hasFile('payment_receipt')) {
+            $payment_receipt = $request->file('payment_receipt')->store('receipts', 'public');
+        }
+
         if ($request->payment_type == 'wallet') {
             if ($user->wallet_balance < $amountInUSD) {
                 return response()->json(['message' => 'Insufficient wallet balance.'], 400);
@@ -387,9 +392,6 @@ class VoucherController extends Controller
         } 
         elseif ($request->payment_type == 'admin_bank' || $request->payment_type == 'wise') {
             $adminBank = AdminPaymentMethod::findOrFail($request->admin_bank_id);
-            if ($request->hasFile('payment_receipt')) {
-                $payment_receipt = $request->file('payment_receipt')->store('receipts', 'public');
-            }
             $bank_details = [
                 'admin_payment_method_id' => $adminBank->id,
                 'bank_name' => $adminBank->bank_name,
