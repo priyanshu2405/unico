@@ -18,8 +18,15 @@
     <button type="button" class="btn btn-outline-primary btn-sm" onclick="fillStudentDemoData()">
       <i class="fas fa-magic"></i> Auto Fill
     </button>
+  @if(session()->has('impersonator_id'))
+  <div class="alert alert-warning d-flex justify-content-between align-items-center mb-3">
+      <span><i class="fas fa-user-shield me-2"></i> You are currently impersonating <strong>{{ Auth::user()->name }}</strong> ({{ Auth::user()->user_id }}).</span>
+      <div class="d-flex gap-2">
+          <a href="{{ route('dashboard') }}" class="btn btn-primary btn-sm">Go to Dashboard</a>
+          <a href="{{ route('users.stop-impersonating') }}" class="btn btn-danger btn-sm">Exit Impersonation</a>
+      </div>
   </div>
-
+  @endif
 
   <div class="wizard-steps mb-4">
     <div class="wizard-step active" data-step="1"><span>✓</span><small>PERSONAL</small></div>

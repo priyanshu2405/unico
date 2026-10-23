@@ -19,6 +19,11 @@ class EnsureProfileIsCompleted
         if (Auth::check()) {
             $user = Auth::user();
             
+            // Allow admin impersonation to navigate without being redirected to onboarding
+            if (session()->has('impersonator_id') || $request->routeIs('users.stop-impersonating')) {
+                return $next($request);
+            }
+
             // Allow them to visit the completion forms, logout, and email verification
             if ($request->routeIs('auth.form.student') || 
                 $request->routeIs('auth.form.student.post') ||
@@ -35,7 +40,7 @@ class EnsureProfileIsCompleted
             if ($user->account_type === 'student' && !$user->exam_purpose && $user->profile_verification_status !== 'verified') {
                 return redirect()->route('auth.form.student');
             }
-            if (in_array($user->account_type, ['reseller_agent', 'agent']) && !$user->business_name) {
+            if (in_array($user->account_type, ['reseller_agent', 'agent']) && !$user->business_name && $user->profile_verification_status !== 'verified') {
                 return redirect()->route('auth.forms.B2BResellerAgent');
             }
         }

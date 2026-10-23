@@ -48,6 +48,8 @@ class TestAccountsSeeder extends Seeder
                 'phone' => '+1234567892',
                 'country' => 'India',
                 'country_iso' => 'IN',
+                'business_name' => 'Prime Resellers Ltd',
+                'business_type' => 'Training Institute',
             ],
             [
                 'email' => 'agent@unicou.nl',
@@ -59,6 +61,8 @@ class TestAccountsSeeder extends Seeder
                 'phone' => '+1234567893',
                 'country' => 'Pakistan',
                 'country_iso' => 'PK',
+                'business_name' => 'Direct Education Consultants',
+                'business_type' => 'Education Consultant',
             ],
             [
                 'email' => 'student@unicou.nl',
@@ -70,6 +74,7 @@ class TestAccountsSeeder extends Seeder
                 'phone' => '+1234567894',
                 'country' => 'Nepal',
                 'country_iso' => 'NP',
+                'exam_purpose' => 'PTE Academic Voucher',
             ],
             [
                 'email' => 'support@unicou.nl',
@@ -101,6 +106,9 @@ class TestAccountsSeeder extends Seeder
             $user->phone = $acc['phone'];
             $user->country = $acc['country'];
             $user->country_iso = $acc['country_iso'];
+            $user->business_name = $acc['business_name'] ?? null;
+            $user->business_type = $acc['business_type'] ?? null;
+            $user->exam_purpose = $acc['exam_purpose'] ?? null;
             $user->email_verified_at = now();
             $user->profile_verification_status = 'verified';
             $user->is_active = true;
