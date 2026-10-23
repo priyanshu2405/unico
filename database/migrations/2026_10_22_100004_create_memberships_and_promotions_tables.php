@@ -17,8 +17,8 @@ return new class extends Migration
                 $table->string('currency', 10)->default('PKR');
                 $table->decimal('discount_percent', 5, 2)->default(1.00); // Extra 1% discount
                 $table->string('promo_code', 50)->unique();
-                $table->timestamp('starts_at');
-                $table->timestamp('expires_at');
+                $table->timestamp('starts_at')->nullable();
+                $table->timestamp('expires_at')->nullable();
                 $table->string('status', 30)->default('active'); // active, expired, cancelled
                 $table->boolean('auto_renew')->default(false);
                 $table->decimal('total_discount_saved', 15, 2)->default(0.00);

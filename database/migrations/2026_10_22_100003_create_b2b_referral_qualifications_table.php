@@ -14,8 +14,8 @@ return new class extends Migration
                 $table->unsignedBigInteger('referrer_id');
                 $table->unsignedBigInteger('referred_id')->unique();
                 $table->decimal('target_amount', 15, 2)->default(100000.00); // Rs. 100,000 threshold
-                $table->timestamp('qualifying_start_date');
-                $table->timestamp('qualifying_deadline'); // First 3 calendar months from registration
+                $table->timestamp('qualifying_start_date')->nullable();
+                $table->timestamp('qualifying_deadline')->nullable(); // First 3 calendar months from registration
                 $table->decimal('total_eligible_purchases', 15, 2)->default(0.00);
                 $table->boolean('is_qualified')->default(false);
                 $table->timestamp('qualified_at')->nullable();
