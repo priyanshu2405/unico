@@ -128,6 +128,9 @@ $isNotifications = request()->routeIs('notifications.*');
                     <i class="fas fa-shopping-cart me-2"></i> My Purchases
                 </a>
             </li>
+            @endif
+
+            @if(auth()->user()->isAdmin() || auth()->user()->isManager() || auth()->user()->isAgent() || auth()->user()->isStudent() || auth()->user()->isResellerAgent())
             <li class="nav-item">
                 <a class="nav-link {{ request()->routeIs('referral') ? 'active' : '' }}" href="{{route('referral')}}">
                     <i class="fas fa-users me-2"></i> Referral Points
@@ -138,6 +141,9 @@ $isNotifications = request()->routeIs('notifications.*');
                     <i class="fas fa-calendar-alt me-2"></i> Bonus Point
                 </a>
             </li>
+            @endif
+
+            @if(auth()->user()->isAgent() || auth()->user()->isStudent() || auth()->user()->isResellerAgent())
             <li class="nav-item">
                 <a class="nav-link {{ request()->routeIs('membership.index') ? 'active' : '' }}" href="{{route('membership.index')}}">
                     <i class="fas fa-crown me-2 text-warning"></i> Membership
@@ -148,11 +154,6 @@ $isNotifications = request()->routeIs('notifications.*');
                     <i class="fas fa-undo me-2"></i> My Refunds
                 </a>
             </li>
-         
-
-            <!-- Voucher Management -->
-
-
             @endif
 
          

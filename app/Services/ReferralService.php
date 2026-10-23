@@ -483,4 +483,69 @@ class ReferralService
             'total_referrals' => $referredUsers->count(),
         ];
     }
+
+    /**
+     * Get aggregate referral summary for Admin
+     */
+    public static function getAdminReferralSummary(?int $userId = null): array
+    {
+        $now = now();
+        $ledgerQuery = RewardPointsLedger::whereIn('point_type', ['b2b_referral', 'student_referral', 'reversal', 'negative_offset']);
+        $qualQuery = B2bReferralQualification::with(['referrer', 'referred'])->latest();
+        $userQuery = User::whereNotNull('referred_by');
+
+        if ($userId) {
+            $ledgerQuery->where('user_id', $userId);
+            $qualQuery->where('referrer_id', $userId);
+            $userQuery->where('referred_by', $userId);
+        }
+
+        $available = (int) (clone $ledgerQuery)
+            ->where('status', 'available')
+            ->where('points_remaining', '>', 0)
+            ->where(function ($q) use ($now) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', $now);
+            })
+            ->sum('points_remaining');
+
+        $pending = (int) (clone $ledgerQuery)
+            ->where('status', 'pending')
+            ->sum('points');
+
+        $held = (int) (clone $ledgerQuery)
+            ->where('status', 'held')
+            ->sum('points');
+
+        $redeemed = (int) abs((clone $ledgerQuery)
+            ->where('point_type', 'redemption')
+            ->sum('points'));
+
+        $totalEarned = (int) (clone $ledgerQuery)
+            ->where('points', '>', 0)
+            ->whereIn('status', ['available', 'pending', 'held', 'redeemed'])
+            ->sum('points');
+
+        $b2bQualifications = $qualQuery->get();
+        $totalReferrals = $userQuery->count();
+
+        $usersList = User::whereIn('account_type', ['agent', 'reseller_agent', 'student'])
+            ->select('id', 'name', 'email', 'account_type', 'user_id')
+            ->orderBy('name')
+            ->get();
+
+        return [
+            'is_admin_view' => true,
+            'points' => [
+                'net_available_points' => $available,
+                'pending_points' => $pending,
+                'held_points' => $held,
+                'redeemed_points' => $redeemed,
+                'total_earned_points' => $totalEarned,
+                'next_expiring_points' => 0,
+            ],
+            'b2b_qualifications' => $b2bQualifications,
+            'total_referrals' => $totalReferrals,
+            'users_list' => $usersList,
+        ];
+    }
 }

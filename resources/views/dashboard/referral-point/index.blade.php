@@ -2,7 +2,7 @@
 
 @section('content')
 <div class="container-fluid py-4">
-    @if(auth()->user()->isAgent() || auth()->user()->isStudent() || auth()->user()->isResellerAgent())
+    @if(auth()->user()->isAdmin() || auth()->user()->isManager() || auth()->user()->isAgent() || auth()->user()->isStudent() || auth()->user()->isResellerAgent())
 
     {{-- Offcanvas Filter --}}
     <div class="offcanvas offcanvas-end" tabindex="-1" id="filterOffcanvas" aria-labelledby="filterOffcanvasLabel">
@@ -14,9 +14,23 @@
         </div>
         <div class="offcanvas-body">
             <form id="filter-form" action="{{ route('referral') }}" method="GET">
+                @if($isAdmin && !empty($summary['users_list']))
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Filter By User</label>
+                    <select name="user_id" class="form-select">
+                        <option value="">All Users (System-wide)</option>
+                        @foreach($summary['users_list'] as $u)
+                            <option value="{{ $u->id }}" {{ request('user_id') == $u->id ? 'selected' : '' }}>
+                                {{ $u->name }} ({{ $u->user_id ?? $u->email }}) &bull; {{ ucfirst(str_replace('_', ' ', $u->account_type)) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+
                 <div class="mb-4">
                     <label class="form-label fw-bold">Search</label>
-                    <input type="text" name="search" class="form-control" placeholder="Search order ID or description..." value="{{ request('search') }}">
+                    <input type="text" name="search" class="form-control" placeholder="Search order ID, user, or description..." value="{{ request('search') }}">
                 </div>
 
                 <div class="mb-4">
@@ -26,6 +40,7 @@
                         <option value="b2b_referral" {{ request('point_type') == 'b2b_referral' ? 'selected' : '' }}>B2B Referral (1%)</option>
                         <option value="student_referral" {{ request('point_type') == 'student_referral' ? 'selected' : '' }}>Student Referral</option>
                         <option value="reversal" {{ request('point_type') == 'reversal' ? 'selected' : '' }}>Reversals</option>
+                        <option value="negative_offset" {{ request('point_type') == 'negative_offset' ? 'selected' : '' }}>Negative Offsets</option>
                     </select>
                 </div>
 
@@ -33,8 +48,9 @@
                     <label class="form-label fw-bold">Status</label>
                     <select name="status" class="form-select">
                         <option value="">All Statuses</option>
-                        <option value="available" {{ request('status') == 'available' ? 'selected' : '' }}>Available (Redeemable)</option>
+                        <option value="available" {{ request('status') == 'available' ? 'selected' : '' }}>Available (Spendable)</option>
                         <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending (Maturity / Holding)</option>
+                        <option value="held" {{ request('status') == 'held' ? 'selected' : '' }}>Held (Disputed / Frozen by Admin)</option>
                         <option value="redeemed" {{ request('status') == 'redeemed' ? 'selected' : '' }}>Redeemed</option>
                         <option value="expired" {{ request('status') == 'expired' ? 'selected' : '' }}>Expired</option>
                         <option value="reversed" {{ request('status') == 'reversed' ? 'selected' : '' }}>Reversed</option>
@@ -58,7 +74,56 @@
         </div>
     </div>
 
-    {{-- Hero Share & Referral Code Card --}}
+    @if($isAdmin)
+    {{-- Admin Oversight Banner --}}
+    <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff;">
+        <div class="card-body p-4 p-lg-5">
+            <div class="row align-items-center g-4">
+                <div class="col-lg-7">
+                    <span class="badge bg-warning text-dark px-3 py-2 rounded-pill mb-3 fw-bold text-uppercase" style="letter-spacing: 0.5px;">
+                        <i class="fas fa-shield-alt me-1"></i> Admin Referral Oversight & Controls
+                    </span>
+                    <h2 class="fw-bold mb-2 text-white">Referral Points Administration</h2>
+                    <p class="text-white-50 mb-4" style="max-width: 580px;">
+                        Manage, review, hold, or release referral points across all agents and students. Oversee B2B qualification progress (Rs. 100,000 in 3 months) and statutory release maturities.
+                    </p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button class="btn btn-outline-light rounded-3 px-3 fw-bold" type="button" data-bs-toggle="offcanvas" data-bs-target="#filterOffcanvas">
+                            <i class="fas fa-filter me-1"></i> Filter Ledgers
+                        </button>
+                        <a href="{{ route('referral.export', request()->all()) }}" class="btn btn-success rounded-3 px-3 fw-bold">
+                            <i class="fas fa-file-csv me-1"></i> Export Full CSV
+                        </a>
+                    </div>
+                </div>
+
+                <div class="col-lg-5">
+                    <div class="bg-white bg-opacity-10 rounded-4 p-4 border border-white border-opacity-10">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="text-white-50 small text-uppercase fw-bold">System Total Spendable</span>
+                            <span class="badge bg-success bg-opacity-25 text-success border border-success border-opacity-25 px-2 py-1">PKR 1 = 1 Point</span>
+                        </div>
+                        <div class="d-flex align-items-baseline mb-2">
+                            <h1 class="display-6 fw-bold mb-0 text-white">{{ number_format($summary['points']['net_available_points']) }}</h1>
+                            <span class="ms-2 text-warning fw-semibold">Points Active</span>
+                        </div>
+                        <div class="row g-2 mt-2 pt-2 border-top border-white border-opacity-10 small text-white-50">
+                            <div class="col-6">
+                                <span class="d-block text-white fw-bold">{{ number_format($summary['points']['pending_points']) }}</span>
+                                Pending Maturity
+                            </div>
+                            <div class="col-6">
+                                <span class="d-block text-danger fw-bold">{{ number_format($summary['points']['held_points'] ?? 0) }}</span>
+                                Flagged on Hold
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @else
+    {{-- User Hero Share & Referral Code Card --}}
     <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff;">
         <div class="card-body p-4 p-lg-5">
             <div class="row align-items-center g-4">
@@ -134,6 +199,7 @@
         </div>
     </div>
     @endif
+    @endif
 
     {{-- Metric Cards --}}
     <div class="row g-3 mb-4">
@@ -152,12 +218,21 @@
                 <div class="card-body p-3 p-lg-4">
                     <span class="text-muted small fw-bold text-uppercase d-block mb-1">Pending Points</span>
                     <h3 class="fw-bold mb-1 text-warning">{{ number_format($summary['points']['pending_points']) }}</h3>
-                    <small class="text-muted"><i class="fas fa-clock text-warning me-1"></i>Awaiting holding or target</small>
+                    <small class="text-muted"><i class="fas fa-clock text-warning me-1"></i>Awaiting maturity/target</small>
                 </div>
             </div>
         </div>
 
         <div class="col-md-3">
+            @if($isAdmin)
+            <div class="card shadow-sm border-0 rounded-4 border-start border-danger border-4 h-100 bg-white">
+                <div class="card-body p-3 p-lg-4">
+                    <span class="text-muted small fw-bold text-uppercase d-block mb-1">Points On Hold</span>
+                    <h3 class="fw-bold mb-1 text-danger">{{ number_format($summary['points']['held_points'] ?? 0) }}</h3>
+                    <small class="text-muted"><i class="fas fa-pause-circle text-danger me-1"></i>Dispute / Admin review</small>
+                </div>
+            </div>
+            @else
             <div class="card shadow-sm border-0 rounded-4 border-start border-primary border-4 h-100 bg-white">
                 <div class="card-body p-3 p-lg-4">
                     <span class="text-muted small fw-bold text-uppercase d-block mb-1">Total Redeemed</span>
@@ -165,6 +240,7 @@
                     <small class="text-muted"><i class="fas fa-shopping-bag text-primary me-1"></i>Saved on purchases</small>
                 </div>
             </div>
+            @endif
         </div>
 
         <div class="col-md-3">
@@ -192,7 +268,10 @@
                 <table class="table table-hover align-middle mb-0">
                     <thead class="table-light small text-uppercase text-muted">
                         <tr>
-                            <th class="ps-4">Referred Business</th>
+                            @if($isAdmin)
+                            <th class="ps-4">Referrer</th>
+                            @endif
+                            <th class="{{ $isAdmin ? '' : 'ps-4' }}">Referred Business</th>
                             <th>Registration Date</th>
                             <th>3-Month Deadline</th>
                             <th>Progress (Target: Rs. 100,000)</th>
@@ -206,7 +285,13 @@
                             $isExpired = now()->gt($qual->qualifying_deadline) && !$qual->is_qualified;
                         @endphp
                         <tr>
+                            @if($isAdmin)
                             <td class="ps-4">
+                                <div class="fw-bold text-dark">{{ $qual->referrer->name ?? 'User #' . $qual->referrer_id }}</div>
+                                <small class="text-muted">{{ $qual->referrer->email ?? '' }}</small>
+                            </td>
+                            @endif
+                            <td class="{{ $isAdmin ? '' : 'ps-4' }}">
                                 <div class="fw-bold text-dark">{{ $qual->referred->name ?? 'User #' . $qual->referred_id }}</div>
                                 <small class="text-muted">{{ $qual->referred->user_id ?? '' }} &bull; {{ ucfirst(str_replace('_', ' ', $qual->referred->account_type ?? 'Agent')) }}</small>
                             </td>
@@ -293,6 +378,86 @@
                         timer: 2000
                     });
                 });
+            });
+        });
+
+        // Admin Point Action Handler (Approve / Hold / Release / Cancel)
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.admin-point-btn');
+            if (!btn) return;
+            e.preventDefault();
+
+            const id = btn.dataset.id;
+            const action = btn.dataset.action;
+            const actionLabels = {
+                'approve': 'Approve & Release Points Immediately',
+                'release': 'Release Points Immediately',
+                'hold': 'Place Points on Hold (Review / Dispute)',
+                'unhold': 'Lift Hold on Points',
+                'cancel': 'Cancel & Revoke Points'
+            };
+            const label = actionLabels[action] || action;
+
+            let promptHtml = `Are you sure you want to <strong>${label}</strong>?`;
+            if (action === 'hold' || action === 'cancel') {
+                promptHtml += `<div class="mt-3 text-start"><label class="form-label small fw-bold">Reason / Memo (Optional):</label><input type="text" id="admin_point_notes" class="form-control" placeholder="e.g. Under transaction dispute or suspicious activity"></div>`;
+            }
+
+            Swal.fire({
+                title: label,
+                html: promptHtml,
+                icon: (action === 'cancel' || action === 'hold') ? 'warning' : 'question',
+                showCancelButton: true,
+                confirmButtonColor: (action === 'cancel') ? '#d33' : ((action === 'hold') ? '#f59e0b' : '#10b981'),
+                confirmButtonText: 'Yes, Proceed',
+                cancelButtonText: 'Cancel',
+                preConfirm: () => {
+                    const notesInput = document.getElementById('admin_point_notes');
+                    return {
+                        notes: notesInput ? notesInput.value : ''
+                    };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        title: 'Processing...',
+                        text: 'Updating point ledger record...',
+                        allowOutsideClick: false,
+                        didOpen: () => { Swal.showLoading(); }
+                    });
+
+                    fetch(`/dashboard/points/${id}/status`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            action: action,
+                            notes: result.value ? result.value.notes : ''
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Success!',
+                                text: data.message,
+                                timer: 2000,
+                                showConfirmButton: false
+                            }).then(() => {
+                                window.location.reload();
+                            });
+                        } else {
+                            Swal.fire('Error', data.message || 'Operation failed.', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        Swal.fire('Error', 'An unexpected network error occurred.', 'error');
+                    });
+                }
             });
         });
     });

@@ -329,6 +329,9 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::get('/bonus-point', [BonusController::class, 'bonus'])->name('bonus');
     Route::get('/bonus-point/export', [BonusController::class, 'export'])->name('bonus.export');
 
+    // Admin & Manager Point Lifecycle Controls (Approve/Release, Hold, Unhold, Cancel)
+    Route::post('/points/{id}/status', [ReferralController::class, 'updatePointStatus'])->name('points.status.update');
+
     // Membership System (Extra 1% Discount)
     Route::get('/membership', [MembershipController::class, 'index'])->name('membership.index');
     Route::post('/membership/activate', [MembershipController::class, 'activate'])->name('membership.activate');
@@ -478,14 +481,6 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
         Route::post('/support-options', [CustomerController::class, 'storeSupportOption'])->name('support.options.store');
         Route::delete('/support-options/{id}', [CustomerController::class, 'deleteSupportOption'])->name('support.options.destroy');
     });
-
-    //Referral Points
-    Route::get('/referral', [ReferralController::class, 'referral'])->name('referral');
-    Route::get('/referral/export', [ReferralController::class, 'export'])->name('referral.export');
-
-    //Bonus Points
-    Route::get('/bonus-point', [BonusController::class, 'bonus'])->name('bonus');
-    Route::get('/bonus-point/export', [BonusController::class, 'export'])->name('bonus.export');
 
     // Dispute Management
     Route::get('/disputes', [DisputeController::class, 'index'])->name('disputes.index');

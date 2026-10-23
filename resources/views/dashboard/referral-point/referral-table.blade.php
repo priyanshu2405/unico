@@ -1,28 +1,38 @@
+@php
+    $isAdmin = $isAdmin ?? (auth()->check() && (auth()->user()->isAdmin() || auth()->user()->isManager()));
+@endphp
 <div class="table-responsive">
     <table class="table table-hover align-middle mb-0">
         <thead class="bg-light small text-uppercase text-muted">
             <tr>
                 <th class="ps-4 py-3 border-0">S.NO</th>
                 <th class="py-3 border-0">Date</th>
+                @if($isAdmin)
+                <th class="py-3 border-0">User Account</th>
+                @endif
                 <th class="py-3 border-0">Category</th>
                 <th class="py-3 border-0">Details / Order</th>
                 <th class="py-3 border-0 text-center">Points</th>
                 <th class="py-3 border-0 text-center">Unspent</th>
                 <th class="py-3 border-0 text-center">Release Date</th>
                 <th class="py-3 border-0 text-center">Expiry Date</th>
-                <th class="pe-4 py-3 border-0 text-center">Status</th>
+                <th class="py-3 border-0 text-center">Status</th>
+                @if($isAdmin)
+                <th class="pe-4 py-3 border-0 text-center">Admin Controls</th>
+                @endif
             </tr>
         </thead>
         <tbody>
             @forelse($referralHistory as $index => $item)
             @php
                 $statusColors = [
-                    'available' => 'bg-soft-success text-success',
-                    'pending' => 'bg-soft-warning text-warning',
-                    'redeemed' => 'bg-soft-primary text-primary',
-                    'expired' => 'bg-soft-secondary text-secondary',
-                    'reversed' => 'bg-soft-danger text-danger',
-                    'cancelled' => 'bg-soft-dark text-dark',
+                    'available' => 'bg-soft-success text-success border border-success border-opacity-25',
+                    'pending' => 'bg-soft-warning text-warning border border-warning border-opacity-25',
+                    'held' => 'bg-soft-danger text-danger border border-danger border-opacity-25',
+                    'redeemed' => 'bg-soft-primary text-primary border border-primary border-opacity-25',
+                    'expired' => 'bg-soft-secondary text-secondary border border-secondary border-opacity-25',
+                    'reversed' => 'bg-soft-dark text-dark border',
+                    'cancelled' => 'bg-soft-danger text-danger border',
                 ];
                 $color = $statusColors[$item->status] ?? 'bg-soft-secondary text-secondary';
             @endphp
@@ -32,6 +42,15 @@
                     {{ $item->created_at ? $item->created_at->format('d M Y') : 'N/A' }}<br>
                     <span class="extra-small">{{ $item->created_at ? $item->created_at->format('H:i') : '' }}</span>
                 </td>
+                @if($isAdmin)
+                <td>
+                    <div class="fw-bold text-dark small">{{ $item->user->name ?? 'User #' . $item->user_id }}</div>
+                    <div class="extra-small text-muted">{{ $item->user->email ?? '' }}</div>
+                    <span class="badge bg-light text-primary border extra-small px-2 py-0 mt-1">
+                        {{ ucfirst(str_replace('_', ' ', $item->user->account_type ?? 'Agent')) }}
+                    </span>
+                </td>
+                @endif
                 <td>
                     <span class="badge bg-light text-dark border">
                         {{ ucfirst(str_replace('_', ' ', $item->point_type)) }}
@@ -47,6 +66,11 @@
                             @endif
                         </small>
                     @endif
+                    @if(!empty($item->metadata['admin_notes']))
+                        <div class="extra-small text-danger mt-1">
+                            <i class="fas fa-sticky-note me-1"></i>Admin: {{ $item->metadata['admin_notes'] }}
+                        </div>
+                    @endif
                 </td>
                 <td class="text-center">
                     @if($item->points > 0)
@@ -59,9 +83,13 @@
                     {{ number_format($item->points_remaining) }}
                 </td>
                 <td class="text-center small text-nowrap">
-                    @if($item->available_at)
+                    @if($item->status === 'available')
+                        <span class="text-success"><i class="fas fa-check-circle me-1"></i>Available</span>
+                    @elseif($item->status === 'held')
+                        <span class="text-danger fw-semibold"><i class="fas fa-pause-circle me-1"></i>On Hold</span>
+                    @elseif($item->available_at)
                         @if(now()->gte($item->available_at))
-                            <span class="text-success"><i class="fas fa-check-circle me-1"></i>Released</span>
+                            <span class="text-success"><i class="fas fa-check-circle me-1"></i>Matured</span>
                         @else
                             <span class="text-warning"><i class="fas fa-clock me-1"></i>{{ $item->available_at->format('d M Y') }}</span>
                         @endif
@@ -80,19 +108,44 @@
                         <span class="text-muted">None</span>
                     @endif
                 </td>
-                <td class="pe-4 text-center">
+                <td class="text-center">
                     <span class="badge {{ $color }} px-2 py-1 text-capitalize">
                         {{ $item->status }}
                     </span>
                 </td>
+                @if($isAdmin)
+                <td class="pe-4 text-center text-nowrap">
+                    @if($item->status === 'pending')
+                        <button type="button" class="btn btn-sm btn-success px-2 py-1 admin-point-btn" data-id="{{ $item->id }}" data-action="release" title="Approve & Release Points Immediately">
+                            <i class="fas fa-check-circle me-1"></i>Approve
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-warning px-2 py-1 ms-1 admin-point-btn" data-id="{{ $item->id }}" data-action="hold" title="Place on Hold (Review / Dispute)">
+                            <i class="fas fa-pause-circle me-1"></i>Hold
+                        </button>
+                    @elseif($item->status === 'available')
+                        <button type="button" class="btn btn-sm btn-outline-warning px-2 py-1 admin-point-btn" data-id="{{ $item->id }}" data-action="hold" title="Place Points on Hold">
+                            <i class="fas fa-pause-circle me-1"></i>Hold
+                        </button>
+                    @elseif($item->status === 'held')
+                        <button type="button" class="btn btn-sm btn-success px-2 py-1 admin-point-btn" data-id="{{ $item->id }}" data-action="release" title="Release / Unhold Points">
+                            <i class="fas fa-play-circle me-1"></i>Release
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger px-2 py-1 ms-1 admin-point-btn" data-id="{{ $item->id }}" data-action="cancel" title="Cancel Points">
+                            <i class="fas fa-ban me-1"></i>Cancel
+                        </button>
+                    @else
+                        <span class="text-muted small">&mdash;</span>
+                    @endif
+                </td>
+                @endif
             </tr>
             @empty
             <tr>
-                <td colspan="9" class="text-center py-5 text-muted">
+                <td colspan="{{ $isAdmin ? 11 : 9 }}" class="text-center py-5 text-muted">
                     <div class="py-4">
                         <i class="fas fa-gift fa-3x text-muted opacity-25 mb-3"></i>
                         <p class="mb-0 fw-semibold">No referral points ledger records found.</p>
-                        <small class="text-muted">Share your referral link with agents or students to start earning rewards.</small>
+                        <small class="text-muted">Points will appear once referred users complete eligible voucher purchases.</small>
                     </div>
                 </td>
             </tr>
