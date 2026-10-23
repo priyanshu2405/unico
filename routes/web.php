@@ -288,7 +288,7 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     Route::post('/users/{user}/password', [UserController::class, 'updatePassword'])->name('users.password.update');
     Route::post('/users/{user}/permissions', [UserController::class, 'updatePermissions'])->name('users.permissions.update');
 
-    Route::post('/users/{user}/impersonate', [UserController::class, 'impersonate'])->name('users.impersonate');
+    Route::match(['get', 'post'], '/users/{user}/impersonate', [UserController::class, 'impersonate'])->name('users.impersonate');
     Route::get('/stop-impersonating', [UserController::class, 'stopImpersonating'])->name('users.stop-impersonating');
     Route::get('/users-download-pdf', [UserController::class, 'downloadPDF'])->name('users.pdf');
     Route::get('/users-export-source', [UserController::class, 'exportCustomerSource'])->name('users.export.source');
