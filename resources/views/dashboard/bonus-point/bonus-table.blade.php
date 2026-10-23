@@ -76,14 +76,15 @@
                 </td>
                 <td class="text-center small text-nowrap">
                     @if($item->status === 'available')
-                        <span class="text-success"><i class="fas fa-check-circle me-1"></i>Available</span>
+                        <span class="text-success fw-semibold"><i class="fas fa-check-circle me-1"></i>Available</span>
                     @elseif($item->status === 'held')
                         <span class="text-danger fw-semibold"><i class="fas fa-pause-circle me-1"></i>On Hold</span>
                     @elseif($item->available_at)
                         @if(now()->gte($item->available_at))
-                            <span class="text-success"><i class="fas fa-check-circle me-1"></i>Matured</span>
+                            <span class="text-success fw-semibold"><i class="fas fa-check-circle me-1"></i>Matured</span>
                         @else
-                            <span class="text-warning"><i class="fas fa-clock me-1"></i>{{ $item->available_at->format('d M Y') }}</span>
+                            <span class="text-warning fw-semibold"><i class="fas fa-clock me-1"></i>{{ $item->available_at->format('d M Y') }}</span>
+                            <div class="extra-small text-muted">{{ now()->diffForHumans($item->available_at, ['syntax' => \Carbon\CarbonInterface::DIFF_RELATIVE_TO_NOW, 'parts' => 1]) }}</div>
                         @endif
                     @else
                         <span class="text-muted">Immediate</span>
@@ -91,10 +92,23 @@
                 </td>
                 <td class="text-center small text-nowrap">
                     @if($item->expires_at)
+                        @php
+                            $validityDays = $item->available_at ? (int) round($item->available_at->diffInDays($item->expires_at)) : 0;
+                            $validityLabel = match(true) {
+                                $validityDays >= 360 => '1 Year Validity',
+                                $validityDays >= 170 => '180 Days Validity',
+                                $validityDays >= 85 => '90 Days Validity',
+                                $validityDays >= 55 => '60 Days Validity',
+                                $validityDays >= 28 => '30 Days Validity',
+                                default => $validityDays . ' Days Validity'
+                            };
+                        @endphp
                         @if(now()->gt($item->expires_at))
                             <span class="text-muted text-decoration-line-through">{{ $item->expires_at->format('d M Y') }}</span>
+                            <div class="extra-small text-danger fw-semibold">Expired</div>
                         @else
-                            <span class="text-dark">{{ $item->expires_at->format('d M Y') }}</span>
+                            <span class="text-dark fw-bold">{{ $item->expires_at->format('d M Y') }}</span>
+                            <div class="extra-small text-muted"><i class="fas fa-hourglass-half me-1"></i>{{ $validityLabel }}</div>
                         @endif
                     @else
                         <span class="text-muted">None</span>
