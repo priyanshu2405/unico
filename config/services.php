@@ -66,6 +66,7 @@ return [
     ],
 
     'recaptcha' => [
+        'enabled' => env('RECAPTCHA_ENABLED', false),
         'site_key' => env('RECAPTCHA_SITE'),
         'secret_key' => env('RECAPTCHA_SECRET'),
     ],

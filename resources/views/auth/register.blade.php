@@ -279,9 +279,11 @@ $accountLocked = $lockRequested && $defaultType === $requestedType;
                     </div>
                 </div>
 
+                @if(config('services.recaptcha.enabled', false) && config('services.recaptcha.site_key'))
                 <div class="captcha-wrapper">
                     <div class="g-recaptcha" data-sitekey="{{ config('services.recaptcha.site_key') }}"></div>
                 </div>
+                @endif
 
                 <button type="button" class="btn-register w-100 mt-3" id="submitBtns">
                     Create Account
@@ -303,7 +305,9 @@ $accountLocked = $lockRequested && $defaultType === $requestedType;
 @endpush
 
 @push('scripts')
+@if(config('services.recaptcha.enabled', false) && config('services.recaptcha.site_key'))
 <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+@endif
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
@@ -341,6 +345,7 @@ $accountLocked = $lockRequested && $defaultType === $requestedType;
         }
 
         document.getElementById('submitBtns').addEventListener('click', function() {
+            @if(config('services.recaptcha.enabled', false) && config('services.recaptcha.site_key'))
             if (typeof grecaptcha === 'undefined') {
                 Swal.fire({
                     title: "reCAPTCHA Error",
@@ -358,6 +363,7 @@ $accountLocked = $lockRequested && $defaultType === $requestedType;
                 });
                 return;
             }
+            @endif
 
             // Get phone from intl-tel-input instance attached by dashboard.js
             const phoneInput = document.querySelector("#phone_input");

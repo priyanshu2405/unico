@@ -155,7 +155,9 @@
     @stack('scripts')
 
     @push('scripts')
+    @if(config('services.recaptcha.enabled', false) && config('services.recaptcha.site_key'))
     <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    @endif
     <script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
@@ -164,64 +166,77 @@
             // Geolocation tracking
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
-                    document.getElementById('latitude').value = position.coords.latitude;
-                    document.getElementById('longitude').value = position.coords.longitude;
+                    const latEl = document.getElementById('latitude');
+                    const lonEl = document.getElementById('longitude');
+                    if (latEl) latEl.value = position.coords.latitude;
+                    if (lonEl) lonEl.value = position.coords.longitude;
                 }, function(error) {
                     console.error("Error obtaining location", error);
                 });
             }
 
             const input = document.querySelector("#phone_input");
-            iti = window.intlTelInput(input, {
-                utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/utils.js",
-                separateDialCode: true,
-                initialCountry: "auto",
-                geoIpLookup: function(success, failure) {
-                    fetch("https://ipapi.co/json")
-                        .then(res => res.json())
-                        .then(data => {
-                            success(data.country_code);
-                            if (typeof updateHeaderFlagUI === 'function') {
-                                updateHeaderFlagUI(data.country_code, data.country_name);
-                            }
-                        })
-                        .catch(() => {
-                            success("in");
-                            if (typeof updateHeaderFlagUI === 'function') {
-                                updateHeaderFlagUI("in", "India");
-                            }
+            if (input) {
+                iti = window.intlTelInput(input, {
+                    utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/utils.js",
+                    separateDialCode: true,
+                    initialCountry: "auto",
+                    geoIpLookup: function(success, failure) {
+                        fetch("https://ipapi.co/json")
+                            .then(res => res.json())
+                            .then(data => {
+                                success(data.country_code);
+                                if (typeof updateHeaderFlagUI === 'function') {
+                                    updateHeaderFlagUI(data.country_code, data.country_name);
+                                }
+                            })
+                            .catch(() => {
+                                success("in");
+                                if (typeof updateHeaderFlagUI === 'function') {
+                                    updateHeaderFlagUI("in", "India");
+                                }
+                            });
+                    }
+                });
+
+                input.addEventListener('countrychange', function() {
+                    if (typeof updateHeaderFlagUI === 'function') {
+                        const countryData = iti.getSelectedCountryData();
+                        updateHeaderFlagUI(countryData.iso2, countryData.name);
+                    }
+                });
+            }
+
+            const submitBtn = document.getElementById('submitBtns');
+            if (submitBtn) {
+                submitBtn.addEventListener('click', function() {
+                    @if(config('services.recaptcha.enabled', false) && config('services.recaptcha.site_key'))
+                    if (typeof grecaptcha !== 'undefined' && grecaptcha.getResponse() === "") {
+                        Swal.fire({
+                            title: "Verification Required",
+                            text: "Please complete the reCAPTCHA.",
+                            icon: "warning"
                         });
-                }
-            });
+                        return;
+                    }
+                    @endif
 
-            input.addEventListener('countrychange', function() {
-                if (typeof updateHeaderFlagUI === 'function') {
-                    const countryData = iti.getSelectedCountryData();
-                    updateHeaderFlagUI(countryData.iso2, countryData.name);
-                }
-            });
+                    const fullPhone = document.getElementById('full_phone');
+                    if (fullPhone && iti) fullPhone.value = iti.getNumber();
 
-            document.getElementById('submitBtns').addEventListener('click', function() {
-                if (grecaptcha.getResponse() === "") {
-                    Swal.fire({
-                        title: "Verification Required",
-                        text: "Please complete the reCAPTCHA.",
-                        icon: "warning"
-                    });
-                    return;
-                }
+                    const countryCode = document.getElementById('country_code');
+                    if (countryCode && iti) countryCode.value = iti.getSelectedCountryData().iso2.toUpperCase();
 
-                document.getElementById('full_phone').value = iti.getNumber();
-                document.getElementById('country_code').value = iti.getSelectedCountryData().iso2.toUpperCase();
+                    const regiFee = document.getElementById('regifeetaken');
+                    if (regiFee) regiFee.value = 'no';
 
-                document.getElementById('regifeetaken').value = 'no';
-                const btn = document.getElementById('submitBtns');
-                if (btn) {
-                    btn.disabled = true;
-                    btn.textContent = 'Processing...';
-                }
-                document.getElementById('realSubmitBtn').click();
-            });
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Processing...';
+
+                    const realSubmit = document.getElementById('realSubmitBtn');
+                    if (realSubmit) realSubmit.click();
+                });
+            }
         });
 
         function setActive(type) {

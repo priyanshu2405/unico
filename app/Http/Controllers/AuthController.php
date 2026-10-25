@@ -44,8 +44,10 @@ class AuthController extends Controller
 
     public function register(Request $request)
     {
+        $captchaEnabled = config('services.recaptcha.enabled', false) && !empty(config('services.recaptcha.secret_key'));
+
         // 🔹 Step 1: Validate form + captcha
-        $validated = $request->validate([
+        $rules = [
             'account_type' => [
                 'required',
                 'in:agent,manager,reseller_agent,support_team,student,admin'
@@ -55,31 +57,38 @@ class AuthController extends Controller
             'country_code' => ['required', 'string', 'max:5'],
             'email'        => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password'     => ['required', 'confirmed', 'min:8'],
-            'g-recaptcha-response' => ['required'],
             'latitude'     => ['nullable', 'string'],
             'longitude'    => ['nullable', 'string'],
-        ]);
+        ];
 
-        // 🔹 Step 2: Verify captcha with Google
-        $http = Http::asForm();
-
-        if (app()->environment('local')) {
-            $http = $http->withoutVerifying();
+        if ($captchaEnabled) {
+            $rules['g-recaptcha-response'] = ['required'];
         }
 
-        $captchaResponse = $http->post(
-            'https://www.google.com/recaptcha/api/siteverify',
-            [
-                'secret'   => config('services.recaptcha.secret_key'),
-                'response' => $request->input('g-recaptcha-response'),
-                'remoteip' => $request->ip(),
-            ]
-        );
+        $validated = $request->validate($rules);
 
-        if (! $captchaResponse->json('success')) {
-            return back()
-                ->withErrors(['captcha' => 'Captcha verification failed'])
-                ->withInput();
+        // 🔹 Step 2: Verify captcha with Google (if enabled)
+        if ($captchaEnabled) {
+            $http = Http::asForm();
+
+            if (app()->environment('local')) {
+                $http = $http->withoutVerifying();
+            }
+
+            $captchaResponse = $http->post(
+                'https://www.google.com/recaptcha/api/siteverify',
+                [
+                    'secret'   => config('services.recaptcha.secret_key'),
+                    'response' => $request->input('g-recaptcha-response'),
+                    'remoteip' => $request->ip(),
+                ]
+            );
+
+            if (! $captchaResponse->json('success')) {
+                return back()
+                    ->withErrors(['captcha' => 'Captcha verification failed'])
+                    ->withInput();
+            }
         }
 
         $geo = \App\Helpers\LocationHelper::geo();
