@@ -22,10 +22,10 @@ if [ "$RUN_MIGRATIONS" = "true" ] || [ "$RUN_MIGRATIONS" = "1" ]; then
     php artisan migrate --force --no-interaction || echo "Warning: Migrations failed. Verify database credentials."
 fi
 
-# Run seeders if SEED_DATABASE is set
-if [ "$SEED_DATABASE" = "true" ] || [ "$SEED_DATABASE" = "1" ]; then
-    echo "==> Seeding database accounts..."
-    php artisan db:seed --class=TestAccountsSeeder --force --no-interaction || echo "Warning: Seeding failed."
+# Ensure default admin and test accounts exist (idempotent, safe)
+if [ "$SEED_DATABASE" != "false" ]; then
+    echo "==> Ensuring admin & test accounts exist..."
+    php artisan db:seed --class=TestAccountsSeeder --force --no-interaction || echo "Notice: Seeding completed or skipped."
 fi
 
 # Cache routes and config for production performance

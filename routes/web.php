@@ -121,6 +121,14 @@ Route::get('/run-migrations-secure', function (\Illuminate\Http\Request $request
         } catch (\Throwable $e) {
             // Symlink might already exist or be restricted
         }
+
+        // Seed test/admin accounts if needed
+        try {
+            \Illuminate\Support\Facades\Artisan::call('db:seed', ['--class' => 'TestAccountsSeeder', '--force' => true]);
+        } catch (\Throwable $e) {
+            // Seeder failure is non-blocking
+        }
+
         \Illuminate\Support\Facades\Artisan::call('cache:clear');
         \Illuminate\Support\Facades\Artisan::call('config:clear');
         \Illuminate\Support\Facades\Artisan::call('view:clear');

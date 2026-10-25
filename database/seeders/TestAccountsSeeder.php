@@ -17,6 +17,17 @@ class TestAccountsSeeder extends Seeder
 
         $accounts = [
             [
+                'email' => 'admin@admin.com',
+                'name' => 'System Administrator',
+                'first_name' => 'System',
+                'last_name' => 'Admin',
+                'account_type' => 'admin',
+                'user_id' => 'ADM00000',
+                'phone' => '+1234567899',
+                'country' => 'United States',
+                'country_iso' => 'US',
+            ],
+            [
                 'email' => 'admin@unicou.nl',
                 'name' => 'System Administrator',
                 'first_name' => 'System',
