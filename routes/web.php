@@ -35,6 +35,7 @@ use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\Request;
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
+use Illuminate\Support\Facades\DB;
 
 Route::get('/storage-link', function () {
     try {
@@ -125,9 +126,9 @@ Route::get('/run-migrations-secure', function (\Illuminate\Http\Request $request
         \Illuminate\Support\Facades\Artisan::call('view:clear');
 
         return "<h3>Database Migration & Sync Complete</h3>" .
-               "<p>Total files: " . count($files) . " | Already tracked: {$skipped} | Newly migrated: {$migrated} | Synced from DB: {$synced}</p>" .
-               "<hr><div style='font-family:monospace; background:#0f172a; color:#f8fafc; padding:20px; border-radius:12px; line-height:1.6;'>" .
-               (empty($logs) ? "All migrations were already up to date!" : implode("<br>", $logs)) . "</div><br><p style='color:#16a34a; font-weight:bold; font-size:1.1rem;'>All database tables and migrations are now 100% in sync!</p>";
+            "<p>Total files: " . count($files) . " | Already tracked: {$skipped} | Newly migrated: {$migrated} | Synced from DB: {$synced}</p>" .
+            "<hr><div style='font-family:monospace; background:#0f172a; color:#f8fafc; padding:20px; border-radius:12px; line-height:1.6;'>" .
+            (empty($logs) ? "All migrations were already up to date!" : implode("<br>", $logs)) . "</div><br><p style='color:#16a34a; font-weight:bold; font-size:1.1rem;'>All database tables and migrations are now 100% in sync!</p>";
     } catch (\Throwable $e) {
         return "<h3>Migration Error</h3><p style='color:red;'>" . htmlspecialchars($e->getMessage()) . "</p><pre>" . htmlspecialchars($e->getTraceAsString()) . "</pre>";
     }
@@ -527,7 +528,7 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
 
         Route::get('/system/stop', [ManagerController::class, 'stopSystem'])->name('system.stop');
         Route::get('/reports', [ManagerController::class, 'reports'])->name('reports');
-        
+
         Route::get('/support-assignments', [App\Http\Controllers\Dashboard\ManagerSupportController::class, 'index'])->name('manager.support.assignments');
         Route::post('/support-assignments', [App\Http\Controllers\Dashboard\ManagerSupportController::class, 'store'])->name('manager.support.assignments.store');
         Route::delete('/support-assignments/{id}', [App\Http\Controllers\Dashboard\ManagerSupportController::class, 'destroy'])->name('manager.support.assignments.destroy');
@@ -538,4 +539,11 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
         Route::get('/', [StudentController::class, 'dashboard'])->name('dashboard');
     });
 });
-
+Route::get('/db-test', function () {
+    try {
+        DB::connection()->getPdo();
+        return 'Database Connected ✅';
+    } catch (\Exception $e) {
+        return $e->getMessage();
+    }
+});
