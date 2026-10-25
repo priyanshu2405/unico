@@ -1,34 +1,37 @@
 @extends('layouts.auth')
 
-@section('title', 'Login')
+@section('title', 'Student Admission - UniCou')
 
 @section('content')
 
-<div class="sat-card">
+<div class="sat-view-container">
+  <div class="sat-card">
 
-  <div class="sat-header d-flex justify-content-between align-items-center">
-    <div>
-      <h2>STUDENT ADMISSION TERMINAL</h2>
-      <h4 class="text-primary mt-2">USER ID: {{ Auth::user()->user_id }}</h4>
-      <p>
-        Establish your identity node according to global standards.
-        Official processing via <b>connect@unicou.uk</b>
-      </p>
+    @if(session()->has('impersonator_id'))
+    <div class="alert alert-warning d-flex justify-content-between align-items-center mb-3">
+        <span><i class="fas fa-user-shield me-2"></i> You are currently impersonating <strong>{{ Auth::user()->name }}</strong> ({{ Auth::user()->user_id }}).</span>
+        <div class="d-flex gap-2">
+            <a href="{{ route('dashboard') }}" class="btn btn-primary btn-sm">Go to Dashboard</a>
+            <a href="{{ route('users.stop-impersonating') }}" class="btn btn-danger btn-sm">Exit Impersonation</a>
+        </div>
     </div>
-    <button type="button" class="btn btn-outline-primary btn-sm" onclick="fillStudentDemoData()">
-      <i class="fas fa-magic"></i> Auto Fill
-    </button>
-  @if(session()->has('impersonator_id'))
-  <div class="alert alert-warning d-flex justify-content-between align-items-center mb-3">
-      <span><i class="fas fa-user-shield me-2"></i> You are currently impersonating <strong>{{ Auth::user()->name }}</strong> ({{ Auth::user()->user_id }}).</span>
-      <div class="d-flex gap-2">
-          <a href="{{ route('dashboard') }}" class="btn btn-primary btn-sm">Go to Dashboard</a>
-          <a href="{{ route('users.stop-impersonating') }}" class="btn btn-danger btn-sm">Exit Impersonation</a>
-      </div>
-  </div>
-  @endif
+    @endif
 
-  <div class="wizard-steps mb-4">
+    <div class="sat-header d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h2>STUDENT ADMISSION TERMINAL</h2>
+        <h4 class="text-primary mt-2">USER ID: {{ Auth::user()->user_id }}</h4>
+        <p>
+          Establish your identity node according to global standards.
+          Official processing via <b>connect@unicou.uk</b>
+        </p>
+      </div>
+      <button type="button" class="btn btn-outline-primary btn-sm" onclick="fillStudentDemoData()">
+        <i class="fas fa-magic"></i> Auto Fill
+      </button>
+    </div>
+
+    <div class="wizard-steps mb-4">
     <div class="wizard-step active" data-step="1"><span>✓</span><small>PERSONAL</small></div>
     <div class="wizard-step" data-step="2"><span>2</span><small>CONTACT</small></div>
     <div class="wizard-step" data-step="3"><span>3</span><small>ADDRESS</small></div>
