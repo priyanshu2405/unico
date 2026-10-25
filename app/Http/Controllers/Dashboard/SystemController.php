@@ -15,18 +15,33 @@ class SystemController extends Controller
 {
     public function controlIndex()
     {
-        $settings = SystemSetting::all()->pluck('settings_value', 'settings_key');
-        $logs = AuditLog::where('action', 'like', 'System %')->latest()->limit(10)->get();
-        
-        // Get unique countries from users table
-        $countries = User::whereNotNull('country_iso')
-            ->where('country_iso', '!=', '')
-            ->select('country_iso', 'country')
-            ->distinct()
-            ->get();
+        try {
+            $settings = \Illuminate\Support\Facades\Schema::hasTable('system_settings')
+                ? SystemSetting::all()->pluck('settings_value', 'settings_key')
+                : collect([]);
 
-        // Get vouchers from InventoryVoucher (Stocks Upload)
-        $vouchers = \App\Models\InventoryVoucher::select('id', 'brand_name', 'voucher_variant', 'country_region as country_name')->get();
+            $logs = \Illuminate\Support\Facades\Schema::hasTable('audit_logs')
+                ? AuditLog::where('action', 'like', 'System %')->latest()->limit(10)->get()
+                : collect([]);
+            
+            // Get unique countries from users table
+            $countries = User::whereNotNull('country_iso')
+                ->where('country_iso', '!=', '')
+                ->select('country_iso', 'country')
+                ->distinct()
+                ->get();
+
+            // Get vouchers from InventoryVoucher (Stocks Upload)
+            $vouchers = \Illuminate\Support\Facades\Schema::hasTable('inventory_vouchers')
+                ? \App\Models\InventoryVoucher::select('id', 'brand_name', 'voucher_variant', 'country_region as country_name')->get()
+                : collect([]);
+        } catch (\Throwable $e) {
+            \Log::warning('System control center query fallback: ' . $e->getMessage());
+            $settings = collect([]);
+            $logs = collect([]);
+            $countries = collect([]);
+            $vouchers = collect([]);
+        }
 
         return view('dashboard.system.control', compact('settings', 'logs', 'countries', 'vouchers'));
     }
