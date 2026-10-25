@@ -21,6 +21,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Force HTTPS scheme in production or when APP_URL is HTTPS
+        if (config('app.env') === 'production' || str_starts_with(config('app.url') ?? '', 'https://')) {
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
+
         // Pagination styling (optional - Bootstrap)
         Paginator::useBootstrap();
 
