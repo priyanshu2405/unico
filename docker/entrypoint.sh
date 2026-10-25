@@ -28,6 +28,10 @@ if [ "$SEED_DATABASE" != "false" ]; then
     php artisan db:seed --class=TestAccountsSeeder --force --no-interaction || echo "Notice: Seeding completed or skipped."
 fi
 
+echo "==> Ensuring 10 global stock vouchers, test purchases, and points exist..."
+php artisan voucher:seed-test-data --no-interaction || echo "Notice: Voucher test data seeding completed or skipped."
+
+
 # Cache routes and config for production performance
 if [ "$APP_ENV" = "production" ] && [ -n "$APP_KEY" ]; then
     echo "==> Optimizing Laravel cache for production..."
