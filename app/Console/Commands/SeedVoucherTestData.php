@@ -10,6 +10,7 @@ use App\Models\RewardPointsLedger;
 use App\Services\CurrencyService;
 use App\Services\WalletService;
 use App\Services\ReferralService;
+use App\Services\PointsService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -172,12 +173,33 @@ class SeedVoucherTestData extends Command
         );
         ReferralService::ensureUserReferralCode($student2);
 
+        // Link with existing seed users on Render/database if present
+        $existingAgent = User::where('email', 'agent@unicou.nl')->first();
+        if ($existingAgent) {
+            $agent1 = $existingAgent;
+        }
+        $existingReseller = User::where('email', 'reseller@unicou.nl')->first();
+        if ($existingReseller) {
+            $agent2 = $existingReseller;
+        }
+        $existingStudent = User::where('email', 'student@unicou.nl')->first();
+        if ($existingStudent) {
+            $student1 = $existingStudent;
+        }
+
+        // Gather all agents, reseller agents and students in the system
+        $allSystemUsers = User::whereIn('account_type', ['agent', 'reseller_agent', 'student'])->get();
         $testUsers = [$agent1, $agent2, $student1, $student2];
+        foreach ($allSystemUsers as $asu) {
+            if (!in_array($asu->id, array_map(fn($x) => $x->id, $testUsers))) {
+                $testUsers[] = $asu;
+            }
+        }
 
         // Also include optional user ID if supplied via flag
         if ($this->option('user-id')) {
             $customUser = User::find($this->option('user-id'));
-            if ($customUser) {
+            if ($customUser && !in_array($customUser->id, array_map(fn($x) => $x->id, $testUsers))) {
                 $testUsers[] = $customUser;
                 $this->info("Included extra user #{$customUser->id} ({$customUser->email}) in seeding.");
             }
@@ -719,6 +741,115 @@ class SeedVoucherTestData extends Command
                 strtoupper($createdLedger->status)
             ));
         }
+
+        // -------------------------------------------------------------
+        // STEP 6: PURCHASE 2 VOUCHERS WITH 2 USERS BY REDEEMING POINTS
+        // -------------------------------------------------------------
+        $this->info("\n6. Executing Purchase of 2 Vouchers with 2 Users by Redeeming Points:");
+
+        // Buyer 1: Student purchases 1 voucher with 200 points redeemed
+        $studentPointsRedeem = 200;
+        $studentDiscountUsd = round(CurrencyService::convertToBase($studentPointsRedeem, 'PKR')['base_amount'], 2);
+        $studentPayable = max(0, (float) $mainVoucher->student_sale_price - $studentDiscountUsd);
+        $codeStudent = $codes[6]; // GLOB-PTE-26-007
+
+        // Deduct remaining payable from wallet
+        WalletService::debit($student1, $studentPayable, 'order_purchase', "Payment for 1x {$mainVoucher->brand_name} (with {$studentPointsRedeem} pts redemption)");
+        if ($admin) {
+            WalletService::credit($admin, $studentPayable, 'order_revenue', "Revenue from {$student1->name} for 1x {$mainVoucher->brand_name}", true);
+        }
+
+        $orderStudentRedeemed = Order::create([
+            'order_id' => 'PUR-' . date('Ymd') . '-RDM' . rand(100, 999),
+            'user_id' => $student1->id,
+            'sub_agent_id' => $student1->referred_by,
+            'user_role' => $student1->account_type,
+            'voucher_type' => $mainVoucher->voucher_type,
+            'voucher_id' => $mainVoucher->sku_id,
+            'quantity' => 1,
+            'amount' => $mainVoucher->student_sale_price,
+            'currency' => 'USD',
+            'exchange_rate_applied' => 1.0,
+            'amount_in_base_currency' => $mainVoucher->student_sale_price,
+            'points_redeemed' => $studentPointsRedeem,
+            'points_redemption_amount' => $studentDiscountUsd,
+            'is_full_points_redemption' => true,
+            'status' => 'delivered',
+            'payment_method' => 'points_and_wallet',
+            'delivery_details' => $codeStudent,
+            'created_at' => Carbon::now()->subMinutes(15),
+        ]);
+
+        // Deduct points from ledger
+        PointsService::redeemPoints($student1, $studentPointsRedeem, $orderStudentRedeemed, "Redeemed {$studentPointsRedeem} points on Order #{$orderStudentRedeemed->order_id}");
+        $deliveredCodes[] = $codeStudent;
+
+        $this->line(sprintf(
+            "   - [User 1: %s (%s)] bought 1 voucher redeeming %d points | Order #%s | Code: %s",
+            $student1->name,
+            $student1->email,
+            $studentPointsRedeem,
+            $orderStudentRedeemed->order_id,
+            $codeStudent
+        ));
+
+        // Buyer 2: Agent purchases 1 voucher with 500 points redeemed
+        $agentPointsRedeem = 500;
+        $agentDiscountUsd = round(CurrencyService::convertToBase($agentPointsRedeem, 'PKR')['base_amount'], 2);
+        $agentPayable = max(0, (float) $mainVoucher->agent_sale_price - $agentDiscountUsd);
+        $codeAgent = $codes[7]; // GLOB-PTE-26-008
+
+        // Deduct remaining payable from wallet
+        WalletService::debit($agent1, $agentPayable, 'order_purchase', "Payment for 1x {$mainVoucher->brand_name} (with {$agentPointsRedeem} pts redemption)");
+        if ($admin) {
+            WalletService::credit($admin, $agentPayable, 'order_revenue', "Revenue from {$agent1->name} for 1x {$mainVoucher->brand_name}", true);
+        }
+
+        $orderAgentRedeemed = Order::create([
+            'order_id' => 'PUR-' . date('Ymd') . '-RDM' . rand(100, 999),
+            'user_id' => $agent1->id,
+            'sub_agent_id' => $agent1->referred_by,
+            'user_role' => $agent1->account_type,
+            'voucher_type' => $mainVoucher->voucher_type,
+            'voucher_id' => $mainVoucher->sku_id,
+            'quantity' => 1,
+            'amount' => $mainVoucher->agent_sale_price,
+            'currency' => 'USD',
+            'exchange_rate_applied' => 1.0,
+            'amount_in_base_currency' => $mainVoucher->agent_sale_price,
+            'points_redeemed' => $agentPointsRedeem,
+            'points_redemption_amount' => $agentDiscountUsd,
+            'is_full_points_redemption' => true,
+            'status' => 'delivered',
+            'payment_method' => 'points_and_wallet',
+            'delivery_details' => $codeAgent,
+            'created_at' => Carbon::now()->subMinutes(5),
+        ]);
+
+        // Deduct points from ledger
+        PointsService::redeemPoints($agent1, $agentPointsRedeem, $orderAgentRedeemed, "Redeemed {$agentPointsRedeem} points on Order #{$orderAgentRedeemed->order_id}");
+        $deliveredCodes[] = $codeAgent;
+
+        $this->line(sprintf(
+            "   - [User 2: %s (%s)] bought 1 voucher redeeming %d points | Order #%s | Code: %s",
+            $agent1->name,
+            $agent1->email,
+            $agentPointsRedeem,
+            $orderAgentRedeemed->order_id,
+            $codeAgent
+        ));
+
+        // Update voucher inventory with all 8 delivered codes
+        $mainVoucher->delivered_vouchers = $deliveredCodes;
+        $mainVoucher->quantity = 10 - count($deliveredCodes); // 2 remaining
+        $mainVoucher->save();
+
+        $this->info(sprintf(
+            "   -> Total Vouchers Purchased: %d (6 initial + 2 redeemed) | Remaining Stock in SKU %s: %d units",
+            count($deliveredCodes),
+            $mainVoucher->sku_id,
+            $mainVoucher->quantity
+        ));
 
         // Summary of User Accounts
         $this->info("\n=======================================================================");

@@ -25,8 +25,8 @@ class SeedVoucherTestDataTest extends TestCase
         $mainVoucher = InventoryVoucher::where('sku_id', 'GLOB-PTE-2026')->first();
         $this->assertNotNull($mainVoucher);
         $this->assertEquals(10, count($mainVoucher->upload_vouchers));
-        $this->assertEquals(6, count($mainVoucher->delivered_vouchers));
-        $this->assertEquals(4, $mainVoucher->quantity); // 10 - 6 = 4 remaining
+        $this->assertEquals(8, count($mainVoucher->delivered_vouchers));
+        $this->assertEquals(2, $mainVoucher->quantity); // 10 - 8 = 2 remaining
 
         // 2. Check Test Users
         $agent1 = User::where('email', 'agent1@unicou.test')->first();
@@ -47,13 +47,12 @@ class SeedVoucherTestDataTest extends TestCase
             $this->assertGreaterThan(1000, $credit->amount);
         }
 
-        // 4. Check Orders: 4 orders totaling 6 vouchers
+        // 4. Check Orders: 6 orders totaling 8 vouchers (including 2 redeemed)
         $orders = Order::where('voucher_id', 'GLOB-PTE-2026')->get();
-        $this->assertEquals(4, $orders->count());
-        $this->assertEquals(6, $orders->sum('quantity'));
+        $this->assertEquals(6, $orders->count());
+        $this->assertEquals(8, $orders->sum('quantity'));
         foreach ($orders as $order) {
             $this->assertEquals('delivered', $order->status);
-            $this->assertEquals('wallet', $order->payment_method);
             $this->assertNotEmpty($order->delivery_details);
         }
 
@@ -74,5 +73,13 @@ class SeedVoucherTestDataTest extends TestCase
         $this->assertContains('student_purchase_bonus', $types);
         $this->assertContains('b2b_referral', $types);
         $this->assertContains('student_referral', $types);
+    }
+
+    public function test_seed_test_data_web_route_executes_successfully()
+    {
+        $response = $this->get('/seed-test-data');
+        $response->assertStatus(200);
+        $response->assertSee('10 Global Vouchers');
+        $this->assertEquals(10, InventoryVoucher::count());
     }
 }

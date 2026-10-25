@@ -45,6 +45,28 @@ Route::get('/storage-link', function () {
         return $e->getMessage();
     }
 });
+
+// Instant Test Data Seeder Endpoint (Callable from browser or dashboard button)
+Route::match(['get', 'post'], '/seed-test-data', function (\Illuminate\Http\Request $request) {
+    try {
+        \Illuminate\Support\Facades\Artisan::call('voucher:seed-test-data', ['--clean' => true]);
+        $output = \Illuminate\Support\Facades\Artisan::output();
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json(['success' => true, 'output' => $output]);
+        }
+
+        if (auth()->check() && (auth()->user()->isAdmin() || auth()->user()->isManager())) {
+            session()->flash('success', '10 Global Vouchers stock, 1 Lakh INR wallet credits, 6 purchases & test bonus/referral points seeded successfully!');
+            return redirect()->route('dashboard');
+        }
+
+        return response("<!DOCTYPE html><html><head><title>UniCou - Test Data Seeded</title><link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css' rel='stylesheet'></head><body class='bg-dark text-white p-4'><div class='container' style='max-width:850px;'><h3 class='text-success mb-3'>✓ 10 Global Vouchers & Test Data Seeded Successfully!</h3><p class='text-light'>10 Global Vouchers stock uploaded, ₹100,000 INR wallet credits applied, 6 purchases recorded & bonus/referral points created.</p><div class='mb-3'><a href='/dashboard' class='btn btn-primary me-2'>Go to Main Dashboard</a><a href='/dashboard/bonus-point' class='btn btn-success me-2'>Go to Bonus Points</a><a href='/dashboard/referral' class='btn btn-info me-2'>Go to Referral Points</a><a href='/inventory' class='btn btn-warning'>Go to Stocks Upload</a></div><pre class='bg-black p-3 text-success border border-secondary rounded' style='white-space: pre-wrap; font-size:13px;'>" . htmlspecialchars($output) . "</pre></div></body></html>");
+    } catch (\Throwable $e) {
+        return response("Error seeding test data: " . $e->getMessage(), 500);
+    }
+})->name('admin.seed-test-data');
+
 // Programmatic migration helper (Commented out for security after successful run)
 Route::get('/run-migrations-secure', function (\Illuminate\Http\Request $request) {
     try {

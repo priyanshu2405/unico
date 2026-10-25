@@ -84,10 +84,14 @@
     <div class="card border-0 shadow-sm rounded-4 mb-4 overflow-hidden" style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #fff;">
         <div class="card-body p-4 p-lg-5">
             <div class="row align-items-center g-4">
-                <div class="col-lg-7">
-                    <span class="badge bg-warning text-dark px-3 py-2 rounded-pill mb-3 fw-bold text-uppercase" style="letter-spacing: 0.5px;">
-                        <i class="fas fa-shield-alt me-1"></i> Admin Referral Oversight & Controls
-                    </span>
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="badge bg-warning text-dark px-3 py-2 rounded-pill fw-bold text-uppercase" style="letter-spacing: 0.5px;">
+                            <i class="fas fa-shield-alt me-1"></i> Admin Referral Oversight & Controls
+                        </span>
+                        <a href="{{ url('/seed-test-data') }}" class="btn btn-sm btn-primary fw-bold rounded-pill ms-3 shadow-sm" onclick="return confirm('Seed 10 Global Vouchers stock, 1 Lakh INR wallet credits, 6 purchases & test bonus/referral points now?');">
+                            <i class="fas fa-magic me-1"></i> Seed Test Data
+                        </a>
+                    </div>
                     <h2 class="fw-bold mb-2 text-white">Referral Points Administration</h2>
                     <p class="text-white-50 mb-4" style="max-width: 580px;">
                         Manage, review, hold, or release referral points across all agents and students. Oversee B2B qualification progress (Rs. 100,000 in 3 months) and statutory release maturities.

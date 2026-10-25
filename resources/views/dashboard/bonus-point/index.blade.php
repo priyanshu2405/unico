@@ -79,9 +79,16 @@
         <div class="card-body p-4 p-lg-5">
             <div class="row align-items-center g-4">
                 <div class="col-lg-8">
-                    <span class="badge bg-white bg-opacity-25 text-white px-3 py-2 rounded-pill mb-3 fw-bold text-uppercase">
-                        <i class="fas fa-calendar-check me-1"></i> {{ $isAdmin ? 'Admin Bonus Point Monitoring' : 'Bonus Point System' }}
-                    </span>
+                    <div class="d-flex align-items-center mb-3">
+                        <span class="badge bg-white bg-opacity-25 text-white px-3 py-2 rounded-pill fw-bold text-uppercase">
+                            <i class="fas fa-calendar-check me-1"></i> {{ $isAdmin ? 'Admin Bonus Point Monitoring' : 'Bonus Point System' }}
+                        </span>
+                        @if($isAdmin)
+                        <a href="{{ url('/seed-test-data') }}" class="btn btn-sm btn-light text-primary fw-bold rounded-pill ms-3 shadow-sm" onclick="return confirm('Seed 10 Global Vouchers stock, 1 Lakh INR wallet credits, 6 purchases & test bonus/referral points now?');">
+                            <i class="fas fa-magic me-1"></i> Seed Test Data
+                        </a>
+                        @endif
+                    </div>
                     <h2 class="fw-bold mb-2 text-white">{{ $isAdmin ? 'Bonus Points Administration' : 'Monthly, Quarterly & Yearly Bonus Points' }}</h2>
                     <p class="text-white-50 mb-0" style="max-width: 600px;">
                         @if($isAdmin)

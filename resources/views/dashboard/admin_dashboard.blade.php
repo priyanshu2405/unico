@@ -3,7 +3,10 @@
 <div class="container-fluid">
    <div class="d-flex justify-content-between align-items-center mb-4">
       <h4 class="fw-bold mb-0">Main Dashboard</h4>
-      <div class="system-status">
+      <div class="system-status d-flex align-items-center gap-2">
+         <a href="{{ url('/seed-test-data') }}" class="btn btn-sm btn-primary shadow-sm" onclick="return confirm('Seed 10 Global Vouchers stock, 1 Lakh INR wallet credits, 6 purchases & test bonus/referral points now?');">
+            <i class="fas fa-magic me-1"></i> Seed 10 Global Vouchers & Test Data
+         </a>
          <span class="badge bg-success-subtle text-success p-2">
             <i class="fas fa-circle me-1 small"></i> System Running
          </span>
