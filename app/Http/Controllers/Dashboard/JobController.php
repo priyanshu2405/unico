@@ -16,6 +16,9 @@ class JobController extends Controller
     private function checkPermission()
     {
         $user = auth()->user();
+        if (!$user) {
+            abort(401, 'Unauthorized. Please log in.');
+        }
         if ($user->account_type === 'manager' && !$user->has_job_permission) {
             abort(403, 'Unauthorized access to job applications.');
         }
@@ -25,29 +28,43 @@ class JobController extends Controller
     public function jobApplication(Request $request)
     {
         $this->checkPermission();
-        $query = JobapplicationModel::with('vacancy');
+        try {
+            if (!\Illuminate\Support\Facades\Schema::hasTable('job_applications')) {
+                $applications = collect([]);
+                return view('dashboard.jobs.job_apllications', compact('applications'));
+            }
 
-        if ($request->filled('country')) {
-            $query->where('country', 'like', '%' . $request->country . '%');
+            $query = JobapplicationModel::query();
+            if (\Illuminate\Support\Facades\Schema::hasTable('job_vacancies')) {
+                $query->with('vacancy');
+            }
+
+            if ($request->filled('country')) {
+                $query->where('country', 'like', '%' . $request->country . '%');
+            }
+
+            if ($request->filled('designation')) {
+                $query->where('designation', $request->designation);
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->status);
+            }
+
+            if ($request->filled('from_date')) {
+                $query->whereDate('created_at', '>=', $request->from_date);
+            }
+
+            if ($request->filled('to_date')) {
+                $query->whereDate('created_at', '<=', $request->to_date);
+            }
+
+            $applications = $query->latest()->get();
+        } catch (\Throwable $e) {
+            \Log::warning('Job applications query fallback: ' . $e->getMessage());
+            $applications = collect([]);
         }
 
-        if ($request->filled('designation')) {
-            $query->where('designation', $request->designation);
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('from_date')) {
-            $query->whereDate('created_at', '>=', $request->from_date);
-        }
-
-        if ($request->filled('to_date')) {
-            $query->whereDate('created_at', '<=', $request->to_date);
-        }
-
-        $applications = $query->latest()->get();
         return view('dashboard.jobs.job_apllications', compact('applications'));
     }
 

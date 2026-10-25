@@ -231,7 +231,7 @@ Route::middleware('auth')->group(function () {
 Route::get('/register/support-team-details', [AuthController::class, 'showSupportForm'])->name('auth.form.support');
 
 Route::post('/job-applications/apply', [JobController::class, 'submitApplication'])->name('job.apply');
-Route::get('/job-applications', [JobController::class, 'jobApplication'])->name('jobApplication');
+Route::get('/job-applications', [JobController::class, 'jobApplication'])->middleware('auth')->name('jobApplication');
 Route::get('/shufti/redirect', function () {
 
     return redirect('/dashboard')->with('success', 'Verification completed successfully');
