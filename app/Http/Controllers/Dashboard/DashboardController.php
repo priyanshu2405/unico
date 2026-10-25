@@ -22,50 +22,70 @@ class DashboardController extends Controller
             $perPage = $request->get('per_page', 10);
             $users = User::latest()->paginate($perPage)->withQueryString();
             
-            $topBrand = Order::where('orders.status', 'delivered')
-                ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
-                ->select('inventory_vouchers.brand_name', \DB::raw('count(*) as total'))
-                ->groupBy('inventory_vouchers.brand_name')
-                ->orderBy('total', 'desc')
-                ->first();
+            try {
+                $topBrand = Order::where('orders.status', 'delivered')
+                    ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
+                    ->select('inventory_vouchers.brand_name', \DB::raw('count(*) as total'))
+                    ->groupBy('inventory_vouchers.brand_name')
+                    ->orderBy('total', 'desc')
+                    ->first();
 
-            $topVariant = Order::where('orders.status', 'delivered')
-                ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
-                ->select('inventory_vouchers.voucher_variant', \DB::raw('count(*) as total'))
-                ->groupBy('inventory_vouchers.voucher_variant')
-                ->orderBy('total', 'desc')
-                ->first();
+                $topVariant = Order::where('orders.status', 'delivered')
+                    ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
+                    ->select('inventory_vouchers.voucher_variant', \DB::raw('count(*) as total'))
+                    ->groupBy('inventory_vouchers.voucher_variant')
+                    ->orderBy('total', 'desc')
+                    ->first();
 
-            $topCountry = Order::where('orders.status', 'delivered')
-                ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
-                ->select('inventory_vouchers.country_region', \DB::raw('count(*) as total'))
-                ->groupBy('inventory_vouchers.country_region')
-                ->orderBy('total', 'desc')
-                ->first();
+                $topCountry = Order::where('orders.status', 'delivered')
+                    ->join('inventory_vouchers', 'orders.voucher_id', '=', 'inventory_vouchers.sku_id')
+                    ->select('inventory_vouchers.country_region', \DB::raw('count(*) as total'))
+                    ->groupBy('inventory_vouchers.country_region')
+                    ->orderBy('total', 'desc')
+                    ->first();
 
-            $topBuyer = Order::where('orders.status', 'delivered')
-                ->join('users', 'orders.user_id', '=', 'users.id')
-                ->select('users.name', \DB::raw('count(*) as total'))
-                ->groupBy('users.id', 'users.name')
-                ->orderBy('total', 'desc')
-                ->first();
+                $topBuyer = Order::where('orders.status', 'delivered')
+                    ->join('users', 'orders.user_id', '=', 'users.id')
+                    ->select('users.name', \DB::raw('count(*) as total'))
+                    ->groupBy('users.id', 'users.name')
+                    ->orderBy('total', 'desc')
+                    ->first();
 
-            $stats = [
-                'total_users' => User::where('account_type', '!=', 'admin')->count(),
-                'agents' => User::where('account_type', 'agent')->count(),
-                'reseller_agents' => User::where('account_type', 'reseller_agent')->count(),
-                'students' => User::where('account_type', 'student')->count(),
-                'pending_approvals' => User::where('profile_verification_status', 'pending')->count(),
-                'total_vouchers' => InventoryVoucher::sum('quantity'),
-                'total_sales' => Order::where('status', 'delivered')->count(),
-                'total_revenue' => Order::where('status', 'delivered')->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o)),
-                'total_referral_points' => Order::sum('referral_points'),
-                'total_bonus_points' => Order::sum('bonus_amount'),
-                'top_brand' => $topBrand ? $topBrand->brand_name : 'N/A',
-                'top_variant' => $topVariant ? $topVariant->voucher_variant : 'N/A',
-                'top_country' => $topCountry ? $topCountry->country_region : 'N/A',
-                'top_buyer' => $topBuyer ? $topBuyer->name : 'N/A',
-            ];
+                $stats = [
+                    'total_users' => User::where('account_type', '!=', 'admin')->count(),
+                    'agents' => User::where('account_type', 'agent')->count(),
+                    'reseller_agents' => User::where('account_type', 'reseller_agent')->count(),
+                    'students' => User::where('account_type', 'student')->count(),
+                    'pending_approvals' => User::where('profile_verification_status', 'pending')->count(),
+                    'total_vouchers' => \Schema::hasTable('inventory_vouchers') ? InventoryVoucher::sum('quantity') : 0,
+                    'total_sales' => \Schema::hasTable('orders') ? Order::where('status', 'delivered')->count() : 0,
+                    'total_revenue' => \Schema::hasTable('orders') ? Order::where('status', 'delivered')->get()->sum(fn($o) => CurrencyService::getOrderBaseAmount($o)) : 0,
+                    'total_referral_points' => \Schema::hasTable('orders') ? Order::sum('referral_points') : 0,
+                    'total_bonus_points' => \Schema::hasTable('orders') ? Order::sum('bonus_amount') : 0,
+                    'top_brand' => $topBrand ? $topBrand->brand_name : 'N/A',
+                    'top_variant' => $topVariant ? $topVariant->voucher_variant : 'N/A',
+                    'top_country' => $topCountry ? $topCountry->country_region : 'N/A',
+                    'top_buyer' => $topBuyer ? $topBuyer->name : 'N/A',
+                ];
+            } catch (\Throwable $e) {
+                \Log::warning('Dashboard stats calculation fallback: ' . $e->getMessage());
+                $stats = [
+                    'total_users' => User::count(),
+                    'agents' => 0,
+                    'reseller_agents' => 0,
+                    'students' => 0,
+                    'pending_approvals' => 0,
+                    'total_vouchers' => 0,
+                    'total_sales' => 0,
+                    'total_revenue' => 0,
+                    'total_referral_points' => 0,
+                    'total_bonus_points' => 0,
+                    'top_brand' => 'N/A',
+                    'top_variant' => 'N/A',
+                    'top_country' => 'N/A',
+                    'top_buyer' => 'N/A',
+                ];
+            }
             return view('dashboard.admin_dashboard', compact('users', 'stats'));
         }
 

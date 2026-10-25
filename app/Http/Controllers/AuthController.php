@@ -159,7 +159,7 @@ class AuthController extends Controller
         }
 
         // 🔴 IMPORTANT: Freeze check
-        if (auth()->user()->is_active == 0) {
+        if (isset(auth()->user()->is_active) && auth()->user()->is_active == 0) {
             Auth::logout();
 
             return back()->withErrors([
@@ -169,10 +169,14 @@ class AuthController extends Controller
 
         $request->session()->regenerate();
 
-        // Update last login time
-        auth()->user()->update([
-            'last_login_at' => now()
-        ]);
+        // Update last login time (safe against missing migration)
+        try {
+            auth()->user()->update([
+                'last_login_at' => now()
+            ]);
+        } catch (\Throwable $e) {
+            \Log::warning('Could not update last_login_at: ' . $e->getMessage());
+        }
 
         return $this->redirectByRole(auth()->user());
     }

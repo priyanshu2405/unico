@@ -550,8 +550,20 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
 Route::get('/db-test', function () {
     try {
         DB::connection()->getPdo();
-        return 'Database Connected ✅';
-    } catch (\Exception $e) {
-        return $e->getMessage();
+        $dbName = DB::connection()->getDatabaseName();
+        $tables = DB::select('SHOW TABLES');
+        $userCount = \Illuminate\Support\Facades\Schema::hasTable('users') ? DB::table('users')->count() : 'No users table';
+        return response()->json([
+            'status' => 'Database Connected ✅',
+            'database' => $dbName,
+            'tables_count' => count($tables),
+            'user_count' => $userCount,
+            'tables' => array_map(fn($t) => array_values((array)$t)[0], $tables),
+        ]);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'status' => 'Database Connection Error ❌',
+            'error' => $e->getMessage()
+        ], 500);
     }
 });
