@@ -19,6 +19,8 @@
                 <th class="py-3 border-0 text-center">Status</th>
                 @if($isAdmin)
                 <th class="pe-4 py-3 border-0 text-center">Admin Controls</th>
+                @else
+                <th class="pe-4 py-3 border-0 text-center">Action</th>
                 @endif
             </tr>
         </thead>
@@ -137,7 +139,12 @@
                             <i class="fas fa-pause-circle me-1"></i>Hold
                         </button>
                     @elseif($item->status === 'available')
-                        <button type="button" class="btn btn-sm btn-outline-warning px-2 py-1 admin-point-btn" data-id="{{ $item->id }}" data-action="hold" title="Place Points on Hold">
+                        @if($item->points_remaining > 0)
+                        <button type="button" class="btn btn-sm btn-success px-2 py-1 admin-redeem-btn" data-user-id="{{ $item->user_id }}" data-points="{{ $item->points_remaining }}" data-user-name="{{ $item->user->name ?? 'User' }}" title="Instantly Redeem Points into User's Wallet">
+                            <i class="fas fa-wallet me-1"></i>Redeem
+                        </button>
+                        @endif
+                        <button type="button" class="btn btn-sm btn-outline-warning px-2 py-1 ms-1 admin-point-btn" data-id="{{ $item->id }}" data-action="hold" title="Place Points on Hold">
                             <i class="fas fa-pause-circle me-1"></i>Hold
                         </button>
                     @elseif($item->status === 'held')
@@ -151,11 +158,21 @@
                         <span class="text-muted small">&mdash;</span>
                     @endif
                 </td>
+                @else
+                <td class="pe-4 text-center text-nowrap">
+                    @if($item->status === 'available' && $item->points_remaining > 0)
+                        <button type="button" class="btn btn-sm btn-success px-2 py-1 user-redeem-row-btn" data-points="{{ $item->points_remaining }}" title="Redeem these points into Wallet">
+                            <i class="fas fa-wallet me-1"></i>Redeem
+                        </button>
+                    @else
+                        <span class="text-muted small">&mdash;</span>
+                    @endif
+                </td>
                 @endif
             </tr>
             @empty
             <tr>
-                <td colspan="{{ $isAdmin ? 11 : 9 }}" class="text-center py-5 text-muted">
+                <td colspan="{{ $isAdmin ? 11 : 10 }}" class="text-center py-5 text-muted">
                     <div class="py-4">
                         <i class="fas fa-gift fa-3x text-muted opacity-25 mb-3"></i>
                         <p class="mb-0 fw-semibold">No referral points ledger records found.</p>

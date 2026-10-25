@@ -341,6 +341,9 @@ Route::prefix('dashboard')->middleware(['auth'])->group(function () {
     // Admin & Manager Point Lifecycle Controls (Approve/Release, Hold, Unhold, Cancel)
     Route::post('/points/{id}/status', [ReferralController::class, 'updatePointStatus'])->name('points.status.update');
 
+    // Instant Points Redemption to Wallet (No minimum threshold, 1 pt = PKR 1 converted)
+    Route::post('/points/redeem-to-wallet', [ReferralController::class, 'redeemToWallet'])->name('points.redeem.wallet');
+
     // Membership System (Extra 1% Discount)
     Route::get('/membership', [MembershipController::class, 'index'])->name('membership.index');
     Route::post('/membership/activate', [MembershipController::class, 'activate'])->name('membership.activate');

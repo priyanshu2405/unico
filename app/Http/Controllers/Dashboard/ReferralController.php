@@ -18,11 +18,17 @@ class ReferralController extends Controller
         $user = Auth::user();
         $isAdmin = $user->isAdmin() || $user->isManager();
 
+        $allPointTypes = [
+            'b2b_referral', 'student_referral',
+            'agent_monthly_bonus', 'agent_quarterly_bonus', 'agent_yearly_bonus', 'student_purchase_bonus',
+            'redemption', 'reversal', 'negative_offset'
+        ];
+
         if ($isAdmin) {
             $summary = ReferralService::getAdminReferralSummary($request->filled('user_id') ? (int) $request->user_id : null);
             $query = RewardPointsLedger::query()
                 ->with(['user', 'order', 'order.inventoryVoucher'])
-                ->whereIn('point_type', ['b2b_referral', 'student_referral', 'reversal', 'negative_offset']);
+                ->whereIn('point_type', $allPointTypes);
 
             if ($request->filled('user_id')) {
                 $query->where('user_id', $request->user_id);
@@ -32,7 +38,7 @@ class ReferralController extends Controller
             $query = RewardPointsLedger::query()
                 ->with(['order', 'order.inventoryVoucher'])
                 ->where('user_id', $user->id)
-                ->whereIn('point_type', ['b2b_referral', 'student_referral', 'reversal', 'negative_offset']);
+                ->whereIn('point_type', $allPointTypes);
         }
 
         // Filters
@@ -88,6 +94,7 @@ class ReferralController extends Controller
         $request->validate([
             'action' => 'required|in:approve,release,hold,unhold,cancel',
             'notes' => 'nullable|string|max:255',
+            'redeem_instantly' => 'nullable|boolean',
         ]);
 
         $ledger = RewardPointsLedger::findOrFail($id);
@@ -106,6 +113,22 @@ class ReferralController extends Controller
             $meta['admin_notes'] = $request->notes ?? 'Approved and released by Admin';
             $meta['admin_action_at'] = now()->toIso8601String();
             $message = "Point transaction #{$ledger->id} (" . number_format($ledger->points) . " pts) has been approved and released immediately.";
+
+            // Save ledger before potential instant redemption
+            $ledger->metadata = $meta;
+            $ledger->save();
+
+            // Instant wallet redemption if requested
+            if ($request->boolean('redeem_instantly') && $ledger->points_remaining > 0) {
+                $targetUser = $ledger->user ?? \App\Models\User::find($ledger->user_id);
+                if ($targetUser) {
+                    $redeemResult = \App\Services\PointsService::redeemPointsToWallet($targetUser, $ledger->points_remaining, $authUser);
+                    if ($redeemResult['success']) {
+                        $message .= " Points were also instantly converted and credited to {$targetUser->name}'s wallet!";
+                        $ledger->refresh();
+                    }
+                }
+            }
         } elseif ($action === 'hold') {
             $ledger->status = 'held';
             $meta['admin_action'] = 'held_by_admin';
@@ -114,6 +137,8 @@ class ReferralController extends Controller
             $meta['admin_notes'] = $request->notes ?? 'Placed on hold by Admin for review/dispute';
             $meta['admin_action_at'] = now()->toIso8601String();
             $message = "Point transaction #{$ledger->id} has been placed on hold (dispute/review).";
+            $ledger->metadata = $meta;
+            $ledger->save();
         } elseif ($action === 'unhold') {
             if ($ledger->available_at && now()->gte($ledger->available_at)) {
                 $ledger->status = 'available';
@@ -124,6 +149,8 @@ class ReferralController extends Controller
             $meta['admin_id'] = $authUser->id;
             $meta['admin_action_at'] = now()->toIso8601String();
             $message = "Point transaction #{$ledger->id} hold has been lifted (status: {$ledger->status}).";
+            $ledger->metadata = $meta;
+            $ledger->save();
         } elseif ($action === 'cancel') {
             $ledger->status = 'cancelled';
             $ledger->points_remaining = 0;
@@ -133,20 +160,48 @@ class ReferralController extends Controller
             $meta['admin_notes'] = $request->notes ?? 'Cancelled by Admin';
             $meta['admin_action_at'] = now()->toIso8601String();
             $message = "Point transaction #{$ledger->id} has been cancelled.";
+            $ledger->metadata = $meta;
+            $ledger->save();
         }
 
-        $ledger->metadata = $meta;
-        $ledger->save();
-
-        if ($request->ajax()) {
+        if ($request->ajax() || $request->expectsJson() || $request->wantsJson()) {
             return response()->json([
                 'success' => true,
                 'message' => $message,
                 'status' => $ledger->status,
+                'points_remaining' => $ledger->points_remaining,
             ]);
         }
 
         return back()->with('success', $message);
+    }
+
+    /**
+     * Redeem available points directly into user wallet (1 pt = PKR 1 converted)
+     */
+    public function redeemToWallet(Request $request)
+    {
+        $authUser = Auth::user();
+
+        // If target_user_id is passed and actor is admin/manager, redeem for target user
+        if ($request->filled('target_user_id') && ($authUser->isAdmin() || $authUser->isManager())) {
+            $user = \App\Models\User::findOrFail($request->target_user_id);
+        } else {
+            $user = $authUser;
+        }
+
+        $points = $request->filled('points') ? (int) $request->points : null;
+        $result = \App\Services\PointsService::redeemPointsToWallet($user, $points, $authUser);
+
+        if ($request->ajax() || $request->expectsJson() || $request->wantsJson()) {
+            return response()->json($result, $result['success'] ? 200 : 422);
+        }
+
+        if (!$result['success']) {
+            return back()->with('error', $result['message']);
+        }
+
+        return back()->with('success', $result['message']);
     }
 
     /**
@@ -178,7 +233,11 @@ class ReferralController extends Controller
 
         $query = RewardPointsLedger::query()
             ->with(['user', 'order', 'order.inventoryVoucher'])
-            ->whereIn('point_type', ['b2b_referral', 'student_referral', 'reversal', 'negative_offset']);
+            ->whereIn('point_type', [
+                'b2b_referral', 'student_referral',
+                'agent_monthly_bonus', 'agent_quarterly_bonus', 'agent_yearly_bonus', 'student_purchase_bonus',
+                'redemption', 'reversal', 'negative_offset'
+            ]);
 
         if (!$isAdmin) {
             $query->where('user_id', $user->id);

@@ -5,9 +5,10 @@
    @php
       $userCurr = $userCurrency ?? (auth()->user()->currency ?? 'USD');
       $walletBalLocal = \App\Services\CurrencyService::convert((float)(auth()->user()->wallet_balance ?? 0), 'USD', $userCurr);
+      $userPoints = \App\Services\PointsService::getUserPointsBalance(auth()->user());
    @endphp
    <div class="row g-3 mb-4">
-      <div class="col-md-4">
+      <div class="col-md-3">
          <div class="card shadow-sm border-0 border-start border-success border-4 h-100">
             <div class="card-body">
                <div class="text-muted small mb-1">Available Wallet Balance</div>
@@ -23,7 +24,28 @@
             </div>
          </div>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
+         <div class="card shadow-sm border-0 border-start border-info border-4 h-100">
+            <div class="card-body">
+               <div class="d-flex justify-content-between align-items-center mb-1">
+                  <div class="text-muted small">Reward Points</div>
+                  @if($userPoints['net_available_points'] > 0)
+                  <a href="{{ route('referral') }}" class="badge bg-success text-decoration-none py-1 px-2 fw-bold" title="Redeem points to wallet">
+                     <i class="fas fa-wallet me-1"></i>Redeem
+                  </a>
+                  @endif
+               </div>
+               <div class="d-flex align-items-center">
+                  <div>
+                     <h3 class="fw-bold mb-0 text-info">{{ number_format($userPoints['net_available_points']) }}</h3>
+                     <div class="text-muted extra-small">Ready for redemption</div>
+                  </div>
+                  <span class="ms-auto text-info small fw-bold"><i class="fas fa-coins me-1"></i>Points</span>
+               </div>
+            </div>
+         </div>
+      </div>
+      <div class="col-md-3">
          <div class="card shadow-sm border-0 border-start border-primary border-4 h-100">
             <div class="card-body">
                <div class="text-muted small mb-1">Total Vouchers Purchased</div>
@@ -34,7 +56,7 @@
             </div>
          </div>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
          <div class="card shadow-sm border-0 border-start border-warning border-4 h-100">
             <div class="card-body">
                <div class="text-muted small mb-1">Total Purchase Amount (Spent)</div>

@@ -136,4 +136,109 @@ class AdminPointsManagementTest extends TestCase
         ]);
         $response->assertStatus(403);
     }
+
+    /**
+     * Test user can redeem small points (e.g. 10 points) directly to wallet with no minimum limit.
+     */
+    public function test_user_can_redeem_available_points_to_wallet_with_no_minimum(): void
+    {
+        $student = $this->createUser(['account_type' => 'student', 'wallet_balance' => 0.00]);
+
+        // Create 10 available bonus points (matching user screenshot)
+        RewardPointsLedger::create([
+            'user_id' => $student->id,
+            'points' => 10,
+            'points_remaining' => 10,
+            'point_type' => 'student_purchase_bonus',
+            'status' => 'available',
+            'available_at' => now()->subDay(),
+            'expires_at' => now()->addYear(),
+            'description' => 'Student Purchase Bonus',
+        ]);
+
+        $response = $this->actingAs($student)->postJson(route('points.redeem.wallet'), [
+            'points' => 10,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+            'points_redeemed' => 10,
+        ]);
+
+        $student->refresh();
+        $this->assertGreaterThan(0, $student->wallet_balance);
+
+        $balance = PointsService::getUserPointsBalance($student);
+        $this->assertEquals(0, $balance['net_available_points']);
+    }
+
+    /**
+     * Test admin can approve and instantly redeem points into user wallet in one step.
+     */
+    public function test_admin_can_approve_and_instantly_redeem_points_to_user_wallet(): void
+    {
+        $admin = $this->createUser(['account_type' => 'admin']);
+        $student = $this->createUser(['account_type' => 'student', 'wallet_balance' => 0.00]);
+
+        $ledger = RewardPointsLedger::create([
+            'user_id' => $student->id,
+            'points' => 10,
+            'points_remaining' => 10,
+            'point_type' => 'student_purchase_bonus',
+            'status' => 'pending',
+            'available_at' => now()->addDays(14),
+            'description' => 'Pending Student Purchase Bonus',
+        ]);
+
+        // Admin approves with redeem_instantly = true
+        $response = $this->actingAs($admin)->postJson(route('points.status.update', $ledger->id), [
+            'action' => 'release',
+            'notes' => 'Approved and instantly redeemed by Admin',
+            'redeem_instantly' => true,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJson([
+            'success' => true,
+        ]);
+
+        $student->refresh();
+        $this->assertGreaterThan(0, $student->wallet_balance);
+
+        $ledger->refresh();
+        $this->assertEquals(0, $ledger->points_remaining);
+    }
+
+    /**
+     * Test referral dashboard displays both referral and bonus points.
+     */
+    public function test_referral_dashboard_shows_both_referral_and_bonus_points(): void
+    {
+        $admin = $this->createUser(['account_type' => 'admin']);
+        $student = $this->createUser(['account_type' => 'student']);
+
+        RewardPointsLedger::create([
+            'user_id' => $student->id,
+            'points' => 10,
+            'points_remaining' => 10,
+            'point_type' => 'student_purchase_bonus',
+            'status' => 'available',
+            'description' => 'Student Purchase Bonus TestPUR',
+        ]);
+
+        RewardPointsLedger::create([
+            'user_id' => $student->id,
+            'points' => 20,
+            'points_remaining' => 20,
+            'point_type' => 'b2b_referral',
+            'status' => 'available',
+            'description' => 'B2B Referral TestPUR',
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('referral'));
+        $response->assertStatus(200);
+        $response->assertSee('Student Purchase Bonus TestPUR');
+        $response->assertSee('B2B Referral TestPUR');
+    }
 }

@@ -39,6 +39,11 @@
                         <option value="">All Categories</option>
                         <option value="b2b_referral" {{ request('point_type') == 'b2b_referral' ? 'selected' : '' }}>B2B Referral (1%)</option>
                         <option value="student_referral" {{ request('point_type') == 'student_referral' ? 'selected' : '' }}>Student Referral</option>
+                        <option value="student_purchase_bonus" {{ request('point_type') == 'student_purchase_bonus' ? 'selected' : '' }}>Student Purchase Bonus</option>
+                        <option value="agent_monthly_bonus" {{ request('point_type') == 'agent_monthly_bonus' ? 'selected' : '' }}>Agent Monthly Bonus</option>
+                        <option value="agent_quarterly_bonus" {{ request('point_type') == 'agent_quarterly_bonus' ? 'selected' : '' }}>Agent Quarterly Bonus</option>
+                        <option value="agent_yearly_bonus" {{ request('point_type') == 'agent_yearly_bonus' ? 'selected' : '' }}>Agent Yearly Bonus</option>
+                        <option value="redemption" {{ request('point_type') == 'redemption' ? 'selected' : '' }}>Redemption (Wallet/Order)</option>
                         <option value="reversal" {{ request('point_type') == 'reversal' ? 'selected' : '' }}>Reversals</option>
                         <option value="negative_offset" {{ request('point_type') == 'negative_offset' ? 'selected' : '' }}>Negative Offsets</option>
                     </select>
@@ -166,9 +171,14 @@
                             <h1 class="display-6 fw-bold mb-0 text-white">{{ number_format($summary['points']['net_available_points']) }}</h1>
                             <span class="ms-2 text-warning fw-semibold">Points Available</span>
                         </div>
-                        <p class="text-white-50 small mb-3">
-                            Redeem up to 10% of eligible voucher purchases during checkout (min 100 points).
+                        <p class="text-white-50 small mb-2">
+                            Redeem points for wallet balance (1 pt = PKR 1) or up to 10% on voucher purchases.
                         </p>
+                        @if($summary['points']['net_available_points'] > 0)
+                        <button type="button" class="btn btn-warning fw-bold px-3 py-2 rounded-3 text-dark open-redeem-modal-btn w-100 mb-3 shadow-sm" data-points="{{ $summary['points']['net_available_points'] }}">
+                            <i class="fas fa-wallet me-1"></i> Redeem {{ number_format($summary['points']['net_available_points']) }} Points to Wallet
+                        </button>
+                        @endif
                         @if($summary['points']['next_expiring_points'] > 0)
                         <div class="alert alert-warning py-2 px-3 mb-0 small rounded-3 bg-warning bg-opacity-25 border-0 text-warning d-flex align-items-center">
                             <i class="fas fa-exclamation-triangle me-2"></i>
@@ -206,9 +216,16 @@
         <div class="col-md-3">
             <div class="card shadow-sm border-0 rounded-4 border-start border-success border-4 h-100 bg-white">
                 <div class="card-body p-3 p-lg-4">
-                    <span class="text-muted small fw-bold text-uppercase d-block mb-1">Available Points</span>
+                    <div class="d-flex justify-content-between align-items-start mb-1">
+                        <span class="text-muted small fw-bold text-uppercase d-block">Available Points</span>
+                        @if($summary['points']['net_available_points'] > 0)
+                        <button type="button" class="btn btn-sm btn-success rounded-pill px-2 py-0 fw-bold open-redeem-modal-btn" data-points="{{ $summary['points']['net_available_points'] }}" data-target-user="{{ $isAdmin && request('user_id') ? request('user_id') : '' }}" title="Redeem points to wallet">
+                            <i class="fas fa-wallet me-1"></i>Redeem
+                        </button>
+                        @endif
+                    </div>
                     <h3 class="fw-bold mb-1 text-success">{{ number_format($summary['points']['net_available_points']) }}</h3>
-                    <small class="text-muted"><i class="fas fa-check-circle text-success me-1"></i>Ready for redemption</small>
+                    <small class="text-muted"><i class="fas fa-check-circle text-success me-1"></i>Ready for redemption (1 pt = PKR 1)</small>
                 </div>
             </div>
         </div>
@@ -399,7 +416,17 @@
             const label = actionLabels[action] || action;
 
             let promptHtml = `Are you sure you want to <strong>${label}</strong>?`;
-            if (action === 'hold' || action === 'cancel') {
+            if (action === 'approve' || action === 'release') {
+                promptHtml += `
+                    <div class="form-check text-start mt-3 p-2 bg-light rounded-3 border">
+                        <input class="form-check-input ms-0 me-2" type="checkbox" id="admin_redeem_instantly" checked>
+                        <label class="form-check-label small fw-bold text-success cursor-pointer" for="admin_redeem_instantly">
+                            <i class="fas fa-wallet me-1"></i>Also instantly redeem and credit points to user's wallet (1 pt = PKR 1)
+                        </label>
+                        <div class="extra-small text-muted ms-4">When checked, points are immediately converted to wallet credit in one step.</div>
+                    </div>
+                `;
+            } else if (action === 'hold' || action === 'cancel') {
                 promptHtml += `<div class="mt-3 text-start"><label class="form-label small fw-bold">Reason / Memo (Optional):</label><input type="text" id="admin_point_notes" class="form-control" placeholder="e.g. Under transaction dispute or suspicious activity"></div>`;
             }
 
@@ -413,8 +440,10 @@
                 cancelButtonText: 'Cancel',
                 preConfirm: () => {
                     const notesInput = document.getElementById('admin_point_notes');
+                    const redeemInstantlyInput = document.getElementById('admin_redeem_instantly');
                     return {
-                        notes: notesInput ? notesInput.value : ''
+                        notes: notesInput ? notesInput.value : '',
+                        redeem_instantly: redeemInstantlyInput ? redeemInstantlyInput.checked : false
                     };
                 }
             }).then((result) => {
@@ -435,7 +464,8 @@
                         },
                         body: JSON.stringify({
                             action: action,
-                            notes: result.value ? result.value.notes : ''
+                            notes: result.value ? result.value.notes : '',
+                            redeem_instantly: result.value ? result.value.redeem_instantly : false
                         })
                     })
                     .then(res => res.json())
@@ -447,6 +477,167 @@
                                 text: data.message,
                                 timer: 2000,
                                 showConfirmButton: false
+                            }).then(() => {
+                                window.location.reload();
+                            });
+                        } else {
+                            Swal.fire('Error', data.message || 'Operation failed.', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        Swal.fire('Error', 'An unexpected network error occurred.', 'error');
+                    });
+                }
+            });
+        });
+
+        // Instant Redemption Modal Handler for Users & Card Buttons
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.open-redeem-modal-btn') || e.target.closest('.user-redeem-row-btn');
+            if (!btn) return;
+            e.preventDefault();
+
+            const maxPoints = parseInt(btn.dataset.points) || 0;
+            const targetUser = btn.dataset.targetUser || '';
+
+            if (maxPoints <= 0) {
+                Swal.fire('Notice', 'You have no available points ready for redemption.', 'info');
+                return;
+            }
+
+            Swal.fire({
+                title: 'Redeem Reward Points',
+                html: `
+                    <div class="text-start">
+                        <p class="text-muted small mb-3">Convert your available reward points directly into your account wallet balance. (<strong>1 Point = PKR 1</strong>, converted to base currency).</p>
+                        <div class="p-3 bg-light rounded-3 border mb-3">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="text-muted">Available Points:</span>
+                                <span class="fw-bold text-success">${maxPoints.toLocaleString()} pts</span>
+                            </div>
+                            <div class="d-flex justify-content-between small">
+                                <span class="text-muted">Conversion Value:</span>
+                                <span class="fw-bold text-primary">PKR ${maxPoints.toLocaleString()}</span>
+                            </div>
+                        </div>
+                        <label class="form-label small fw-bold">Points to Redeem:</label>
+                        <input type="number" id="redeem_points_input" class="form-control mb-2" value="${maxPoints}" min="1" max="${maxPoints}">
+                        <div class="extra-small text-muted"><i class="fas fa-bolt text-warning me-1"></i>Points are credited instantly into your wallet. No minimum limit required!</div>
+                    </div>
+                `,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#10b981',
+                confirmButtonText: '<i class="fas fa-wallet me-1"></i> Redeem to Wallet',
+                cancelButtonText: 'Cancel',
+                preConfirm: () => {
+                    const input = document.getElementById('redeem_points_input');
+                    const pts = parseInt(input ? input.value : 0);
+                    if (!pts || pts <= 0) {
+                        Swal.showValidationMessage('Please enter at least 1 point to redeem.');
+                        return false;
+                    }
+                    if (pts > maxPoints) {
+                        Swal.showValidationMessage(`You can only redeem up to ${maxPoints.toLocaleString()} points.`);
+                        return false;
+                    }
+                    return { points: pts };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        title: 'Redeeming...',
+                        text: 'Converting points to wallet balance...',
+                        allowOutsideClick: false,
+                        didOpen: () => { Swal.showLoading(); }
+                    });
+
+                    fetch(`{{ route('points.redeem.wallet') }}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            points: result.value.points,
+                            target_user_id: targetUser || null
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Redeemed Successfully!',
+                                text: data.message,
+                                confirmButtonColor: '#10b981'
+                            }).then(() => {
+                                window.location.reload();
+                            });
+                        } else {
+                            Swal.fire('Redemption Failed', data.message || 'Could not complete redemption.', 'error');
+                        }
+                    })
+                    .catch(err => {
+                        Swal.fire('Error', 'An unexpected network error occurred.', 'error');
+                    });
+                }
+            });
+        });
+
+        // Admin Direct Redeem Button from Table Row
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.admin-redeem-btn');
+            if (!btn) return;
+            e.preventDefault();
+
+            const userId = btn.dataset.userId;
+            const userName = btn.dataset.userName || 'User';
+            const points = parseInt(btn.dataset.points) || 0;
+
+            if (points <= 0) {
+                Swal.fire('Notice', 'No remaining points to redeem.', 'info');
+                return;
+            }
+
+            Swal.fire({
+                title: 'Redeem Points to Wallet',
+                html: `Are you sure you want to instantly convert & credit <strong>${points.toLocaleString()} points</strong> into <strong>${userName}</strong>'s wallet? (1 pt = PKR 1 converted)`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#10b981',
+                confirmButtonText: 'Yes, Redeem to Wallet',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    Swal.fire({
+                        title: 'Processing...',
+                        text: 'Crediting user wallet...',
+                        allowOutsideClick: false,
+                        didOpen: () => { Swal.showLoading(); }
+                    });
+
+                    fetch(`{{ route('points.redeem.wallet') }}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            target_user_id: userId,
+                            points: points
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            Swal.fire({
+                                icon: 'success',
+                                title: 'Redeemed!',
+                                text: data.message,
+                                confirmButtonColor: '#10b981'
                             }).then(() => {
                                 window.location.reload();
                             });

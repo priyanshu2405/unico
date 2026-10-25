@@ -125,13 +125,13 @@ class PointsService
     /**
      * Deduct points from user's ledger using FIFO (earliest-expiring available points first)
      */
-    public static function redeemPoints(User $user, int $pointsToRedeem, Order $order): void
+    public static function redeemPoints(User $user, int $pointsToRedeem, ?Order $order = null, string $description = ''): void
     {
         if ($pointsToRedeem <= 0) {
             return;
         }
 
-        DB::transaction(function () use ($user, $pointsToRedeem, $order) {
+        DB::transaction(function () use ($user, $pointsToRedeem, $order, $description) {
             $now = now();
             $availableLedgers = RewardPointsLedger::where('user_id', $user->id)
                 ->where('status', 'available')
@@ -161,16 +161,96 @@ class PointsService
             }
 
             // Create negative redemption ledger entry
+            $desc = $description;
+            if (empty($desc)) {
+                $desc = $order ? "Redeemed {$pointsToRedeem} points on Order #{$order->order_id}" : "Redeemed {$pointsToRedeem} points into wallet credit";
+            }
+
             RewardPointsLedger::create([
                 'user_id' => $user->id,
-                'order_id' => $order->id,
+                'order_id' => $order ? $order->id : null,
                 'points' => -$pointsToRedeem,
                 'points_remaining' => 0,
                 'point_type' => 'redemption',
                 'status' => 'redeemed',
-                'description' => "Redeemed {$pointsToRedeem} points on Order #{$order->order_id}",
+                'description' => $desc,
+                'metadata' => [
+                    'redeemed_to' => $order ? 'order_checkout' : 'wallet_balance',
+                    'redeemed_at' => now()->toIso8601String(),
+                ],
             ]);
         });
+    }
+
+    /**
+     * Redeem available points into user's wallet balance (1 pt = 1 PKR, converted to USD).
+     * No minimum point threshold.
+     */
+    public static function redeemPointsToWallet(User $user, ?int $points = null, ?User $actor = null): array
+    {
+        $balance = self::getUserPointsBalance($user);
+        $netAvailable = $balance['net_available_points'];
+
+        if ($netAvailable <= 0) {
+            return [
+                'success' => false,
+                'message' => 'No available points are ready for redemption.',
+            ];
+        }
+
+        $pointsToRedeem = $points !== null ? (int) $points : $netAvailable;
+        if ($pointsToRedeem <= 0) {
+            return [
+                'success' => false,
+                'message' => 'Please enter a valid amount of points to redeem.',
+            ];
+        }
+
+        if ($pointsToRedeem > $netAvailable) {
+            return [
+                'success' => false,
+                'message' => "Cannot redeem {$pointsToRedeem} points. You only have {$netAvailable} available points.",
+            ];
+        }
+
+        // 1 point = 1 PKR. Convert to USD base currency
+        $converted = CurrencyService::convertToBase((float) $pointsToRedeem, 'PKR');
+        $amountUSD = max(0.01, round($converted['base_amount'], 2));
+
+        $actorName = $actor && $actor->id !== $user->id ? "by Admin ({$actor->name})" : "by User";
+
+        DB::transaction(function () use ($user, $pointsToRedeem, $amountUSD, $actorName) {
+            // 1. Deduct points via FIFO
+            self::redeemPoints(
+                $user,
+                $pointsToRedeem,
+                null,
+                "Redeemed {$pointsToRedeem} points into wallet credit ({$actorName})"
+            );
+
+            // 2. Credit to user's wallet
+            WalletService::credit(
+                $user,
+                $amountUSD,
+                'points_redemption',
+                "Converted {$pointsToRedeem} reward points into wallet balance ({$actorName}, 1 pt = PKR 1)",
+                true
+            );
+        });
+
+        $userCurr = $user->currency ?: 'USD';
+        $localCredited = CurrencyService::convert($amountUSD, 'USD', $userCurr);
+
+        return [
+            'success' => true,
+            'message' => "Successfully redeemed " . number_format($pointsToRedeem) . " points into {$userCurr} " . number_format($localCredited, 2) . " ($" . number_format($amountUSD, 2) . " USD) wallet credit!",
+            'points_redeemed' => $pointsToRedeem,
+            'amount_usd' => $amountUSD,
+            'local_amount' => $localCredited,
+            'currency' => $userCurr,
+            'new_wallet_balance' => (float) $user->fresh()->wallet_balance,
+            'new_points_balance' => self::getUserPointsBalance($user)['net_available_points'],
+        ];
     }
 
     /**

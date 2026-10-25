@@ -490,7 +490,12 @@ class ReferralService
     public static function getAdminReferralSummary(?int $userId = null): array
     {
         $now = now();
-        $ledgerQuery = RewardPointsLedger::whereIn('point_type', ['b2b_referral', 'student_referral', 'reversal', 'negative_offset']);
+        $allPointTypes = [
+            'b2b_referral', 'student_referral',
+            'agent_monthly_bonus', 'agent_quarterly_bonus', 'agent_yearly_bonus', 'student_purchase_bonus',
+            'redemption', 'reversal', 'negative_offset'
+        ];
+        $ledgerQuery = RewardPointsLedger::whereIn('point_type', $allPointTypes);
         $qualQuery = B2bReferralQualification::with(['referrer', 'referred'])->latest();
         $userQuery = User::whereNotNull('referred_by');
 
